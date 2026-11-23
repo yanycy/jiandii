@@ -1,6 +1,6 @@
 /**
  * 打包 Electron 桌面版
- * 产物：dist/桌面版/简递.exe（免安装便携版）
+ * 产物：投递工具/桌面版/一键投递助手.exe
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(__dirname, 'node_modules', 'electron', 'dist');
-const OUT = path.join(ROOT, 'dist', '桌面版');
-const TMP_DATA = path.join(ROOT, 'dist', '.tmp-data');
+const OUT = path.join(ROOT, '投递工具', '桌面版');
+const TMP_DATA = path.join(ROOT, '投递工具', '.tmp-data');
 const APP_NAME = '简递.exe';
 
 const log = m => console.log('  ' + m);
@@ -122,12 +122,33 @@ if (fs.existsSync(exeSrc)) {
   fs.renameSync(exeSrc, exeDst);
 }
 
+// 5.5) 给 exe 写入应用图标。
+// electron-builder 用 --prepackaged 打安装包时不会重新设置 exe 图标
+// （它认为应用已打包好），而这里只是把 electron.exe 改名，图标还是
+// Electron 默认的「原子」图标。必须用 rcedit 手动写入，否则安装后
+// 桌面快捷方式/任务栏会显示成 Electron 默认图标。
+const iconFile = path.join(__dirname, 'build', 'icon.ico');
+if (fs.existsSync(exeDst) && fs.existsSync(iconFile)) {
+  const rcedit = path.join(__dirname, 'node_modules', 'electron-winstaller', 'vendor', 'rcedit.exe');
+  if (fs.existsSync(rcedit)) {
+    log('写入应用图标...');
+    try {
+      execFileSync(rcedit, [exeDst, '--set-icon', iconFile], { stdio: 'ignore' });
+      log('图标已写入（icon.ico）');
+    } catch (e) {
+      log('⚠ 图标写入失败：' + e.message);
+    }
+  } else {
+    log('⚠ 未找到 rcedit.exe，跳过图标写入');
+  }
+}
+
 // 6) 恢复数据目录
 if (hasData) {
   robocopy([TMP_DATA, dataDir, '/E', '/MOVE', '/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS']);
   log('数据目录已恢复（历史投递记录保留）');
 } else {
-  const legacy = path.join(ROOT, 'dist', 'AutoApplyBot-data');
+  const legacy = path.join(ROOT, '投递工具', 'AutoApplyBot-data');
   if (fs.existsSync(legacy)) {
     robocopy([legacy, dataDir, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS']);
     log('已导入历史投递记录');
