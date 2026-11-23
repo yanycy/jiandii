@@ -351,8 +351,17 @@ class Updater {
 
   /**
    * 启动安装程序并退出应用。
-   * 用 cmd 延时 2 秒再启动，给本进程留出完全退出的时间，
-   * 否则安装程序会因为「程序正在运行」而卡住。
+   *
+   * 根因修复：之前用 spawn('cmd.exe', '/c ping ... & start "安装包"') 的方式，
+   * 那个 cmd 子进程会随 Electron 退出被连带杀掉，导致「下载完了、应用也退了、
+   * 但安装程序根本没启动」。
+   *
+   * 现在改成直接 spawn 安装包本体（就是 NSIS 安装器），并带 --updated 参数：
+   *   - 安装器知道这是「更新」而非全新安装，会复用原安装目录；
+   *   - 安装器会先等应用自己退出（Sleep），没退就 KILL_PROCESS 强制关闭，
+   *     再完成文件覆盖（这正是 electron-updater 的标准做法）。
+   *   - detached + unref 让安装器脱离本进程，应用退出不影响它继续装。
+   *
    * unlock：退出前解除「强制更新禁止关闭」的锁定，否则 app.quit() 会被窗口拦住。
    */
   install(file, opts = {}) {
@@ -360,16 +369,20 @@ class Updater {
     if (!app.isPackaged && !process.env.JIANDI_ALLOW_DEV_INSTALL) {
       return { ok: true, dev: true, file };
     }
-    const cmd = `ping -n 3 127.0.0.1 >nul & start "" "${file}"`;
-    const child = spawn('cmd.exe', ['/c', cmd], {
-      detached: true, stdio: 'ignore', windowsHide: true,
+
+    try { opts.unlock && opts.unlock(); } catch {}
+
+    const child = spawn(String(file), ['--updated'], {
+      detached: true, stdio: 'ignore',
     });
     child.on('error', () => {});
     child.unref();
+
+    // 给安装器一点启动时间，然后退出应用让它拿到文件锁
     setTimeout(() => {
-      try { opts.unlock && opts.unlock(); } catch {}
       try { app.quit(); } catch {}
-    }, 300);
+    }, 150);
+
     return { ok: true, file };
   }
 }
