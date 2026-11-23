@@ -1,0 +1,10 @@
+{
+  "_说明": "复制成 oss.config.json 后填上你自己的 AccessKey。这个文件不要传给别人、不要提交到代码仓库。",
+  "accessKeyId": "",
+  "accessKeySecret": "",
+  "bucket": "jiandidi",
+  "region": "cn-shenzhen",
+  "dir": "releases",
+  "endpoint": "",
+  "acl": "public-read"
+}

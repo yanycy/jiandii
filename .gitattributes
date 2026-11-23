@@ -1,0 +1,7 @@
+# 统一换行符，避免 Windows 下 LF/CRLF 混用导致的 diff 噪音
+* text=auto eol=lf
+
+# 二进制文件不参与换行转换
+*.png binary
+*.ico binary
+*.svg text

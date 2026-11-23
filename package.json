@@ -1,0 +1,25 @@
+{
+  "name": "jiandi",
+  "version": "1.1.0",
+  "description": "简递 · 多平台实习岗位自动投递助手（BOSS直聘 / 牛客 / 智联招聘 / 猎聘）",
+  "main": "app/main.js",
+  "author": "黄选权",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "node auto-apply.mjs",
+    "check": "node auto-apply.mjs --check",
+    "dev": "electron .",
+    "bundle": "node -e \"require('child_process').execSync('node node_modules/esbuild/bin/esbuild auto-apply.mjs --bundle --platform=node --target=node20 --format=cjs --outfile=app/core.cjs --log-level=error')\"",
+    "build": "node build-electron.mjs",
+    "build:installer": "electron-builder --win --config electron-builder.yml"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  }
+}

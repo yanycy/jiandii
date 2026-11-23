@@ -1,0 +1,57 @@
+appId: cn.jiandi.desktop
+productName: 简递
+copyright: Copyright © 2026 简递
+
+directories:
+  app: app
+  output: dist/installer
+  buildResources: build
+
+# 复用 node_modules 里已下载的 Electron 运行时（打包前先 npm install）
+electronDist: node_modules/electron/dist
+
+files:
+  - main.js
+  - preload.js
+  - updater.js
+  - core.cjs
+  - package.json
+  - renderer/**/*
+  - "!**/*.map"
+  - "!node_modules/**/*"
+  - "!**/node_modules/**/*"
+
+electronLanguages:
+  - zh-CN
+  - en-US
+
+asar: true
+npmRebuild: false
+compression: maximum
+
+win:
+  icon: build/icon.ico
+  executableName: 简递
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: 简递-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: 简递
+  installerLanguages:
+    - zh_CN
+  language: "2052"
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  menuCategory: false

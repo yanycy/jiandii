@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ring" x1="230" y1="200" x2="800" y2="830" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#96C6EF"/>
+      <stop offset="0.5" stop-color="#7CCBD2"/>
+      <stop offset="1" stop-color="#63C6AE"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E9F7F2"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.45" r="0.56">
+      <stop offset="0" stop-color="#6FCDB4" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#6FCDB4" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#2A7A69" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <!-- 底板 -->
+  <rect x="14" y="14" width="996" height="996" rx="226" fill="url(#card)"/>
+  <rect x="14" y="14" width="996" height="996" rx="226" fill="url(#halo)"/>
+  <rect x="16" y="16" width="992" height="992" rx="224" fill="none" stroke="#D3EBE4" stroke-width="3"/>
+
+  <!-- 环形箭头 + 信封 -->
+  <g filter="url(#soft)">
+    <path d="M776.9 371.2 A300 300 0 1 1 652.9 247.1"
+          fill="none" stroke="url(#ring)" stroke-width="52" stroke-linecap="round"/>
+    <path d="M721.8 283.7 L659.4 200.7 L618.2 278.5 Z" fill="#55C2AB"/>
+
+    <rect x="387" y="420" width="250" height="185" rx="16" fill="#57C2A9"/>
+    <path d="M404 440 L512 505 L620 440"
+          fill="none" stroke="#3FA88F" stroke-width="17"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

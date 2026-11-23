@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>简递</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="titlebar">
+  <div class="logo">
+    <svg viewBox="0 0 512 512" width="18" height="18" aria-hidden="true">
+      <defs>
+        <linearGradient id="lgRing" x1="90" y1="70" x2="430" y2="450" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#8FBEEA"/>
+          <stop offset="0.5" stop-color="#74C6CE"/>
+          <stop offset="1" stop-color="#4FBBA1"/>
+        </linearGradient>
+      </defs>
+      <path d="M392.8 177 A158 158 0 1 1 335 119.2" fill="none" stroke="url(#lgRing)" stroke-width="40" stroke-linecap="round"/>
+      <path d="M370 141 L336 93 L310 136 Z" fill="#4FBBA1"/>
+      <rect x="182" y="201" width="148" height="110" rx="14" fill="#4FBBA1"/>
+      <path d="M196 216 L256 258 L316 216" fill="none" stroke="#F2FBF7" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div class="tname">简递</div>
+  <button class="tver" id="ver" title="检查更新"></button>
+  <div class="tspacer"></div>
+  <div class="thist" id="histTop">
+    <span class="hdot"></span>
+  </div>
+  <button class="themebtn" id="btnTheme" title="切换明暗主题">
+    <svg class="ico-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path>
+    </svg>
+    <svg class="ico-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4.2"></circle>
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"></path>
+    </svg>
+  </button>
+</header>
+
+<div class="shell">
+
+  <!-- 左侧配置 -->
+  <aside class="side">
+
+    <div class="sidebody">
+
+    <div class="grp">
+      <h3>投递平台</h3>
+      <div class="seg seg4" id="platSeg">
+        <button data-plat="boss" class="on">
+          <span class="si">B</span>
+          <span>BOSS</span>
+        </button>
+        <button data-plat="nk">
+          <span class="si">N</span>
+          <span>牛客</span>
+        </button>
+        <button data-plat="zh">
+          <span class="si">Z</span>
+          <span>智联</span>
+        </button>
+        <button data-plat="lp">
+          <span class="si">猎</span>
+          <span>猎聘</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>目标城市 <span class="hint" id="cityCur">南宁</span></h3>
+      <div class="citypick">
+        <div class="citysearch">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path>
+          </svg>
+          <input id="cityInput" placeholder="搜索全国 373 个城市…" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <div class="citylist" id="cityList"></div>
+      <p class="note hide" id="cityNote"></p>
+    </div>
+
+    <div class="grp hide" id="nkOpts">
+      <h3>岗位类型</h3>
+      <div class="chips type" id="typeChips">
+        <button data-type="intern" class="on">实习</button>
+        <button data-type="campus">校招</button>
+        <button data-type="all">全部</button>
+      </div>
+      <p class="note">只有实习能一键投</p>
+
+      <h3 class="sub">学历要求</h3>
+      <div class="chips" id="eduChips">
+        <button data-edu="不限" class="on">不限</button>
+        <button data-edu="专科">专科</button>
+        <button data-edu="本科">本科</button>
+        <button data-edu="硕士">硕士</button>
+      </div>
+    </div>
+
+    <div class="grp hide" id="zhOpts">
+      <h3>工作性质</h3>
+      <div class="chips s3" id="zhTypeChips">
+        <button data-ztype="all">不限</button>
+        <button data-ztype="fulltime">全职</button>
+        <button data-ztype="parttime">兼职/临时</button>
+        <button data-ztype="intern" class="on">实习</button>
+        <button data-ztype="campus">校园</button>
+      </div>
+
+      <h3 class="sub">学历要求</h3>
+      <div class="chips s3" id="zhEduChips">
+        <button data-edu="不限" class="on">不限</button>
+        <button data-edu="大专">大专</button>
+        <button data-edu="本科">本科</button>
+      </div>
+    </div>
+
+    <div class="grp hide" id="bossOpts">
+      <h3 title="与 BOSS「求职类型」筛选一致；实习岗多在 150~200 元/天">求职类型</h3>
+      <div class="chips" id="bossTypeChips">
+        <button data-btype="all">不限</button>
+        <button data-btype="fulltime">全职</button>
+        <button data-btype="parttime">兼职</button>
+        <button data-btype="intern" class="on">实习</button>
+      </div>
+    </div>
+
+    <div class="grp hide" id="lpOpts">
+      <h3>工作性质</h3>
+      <div class="chips s3" id="lpTypeChips">
+        <button data-lptype="all">不限</button>
+        <button data-lptype="fulltime">全职</button>
+        <button data-lptype="parttime">兼职</button>
+        <button data-lptype="intern" class="on">实习</button>
+      </div>
+
+      <h3 class="sub">学历上限</h3>
+      <div class="chips s3" id="lpEduChips">
+        <button data-edu="不限" class="on">不限</button>
+        <button data-edu="大专">大专</button>
+        <button data-edu="本科">本科</button>
+      </div>
+      <p class="note">只投要求不高于所选学历的岗</p>
+    </div>
+
+    <div class="grp">
+      <h3>本轮投递上限 <span class="hint" id="maxHint">留空 = 不限</span></h3>
+      <div class="numrow">
+        <input type="number" id="maxInput" min="1" max="999" placeholder="不限">
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>
+        检索关键词
+        <button class="mini" id="kwToggle">收起</button>
+      </h3>
+      <div id="kwWrap">
+        <textarea id="kwInput" rows="3" spellcheck="false" placeholder="前端实习 web前端 全栈开发 实施工程师"></textarea>
+        <p class="note">四个平台通用 · 只用空格分隔</p>
+      </div>
+    </div>
+
+    </div><!-- /sidebody -->
+
+    <div class="grp actions">
+      <button class="primary" id="btnStart">
+        <span>开始投递</span>
+      </button>
+      <button class="ghost hide" id="btnStop">停止</button>
+      <button class="ghost hide" id="btnCloseBr" title="关掉投递专用的浏览器窗口，不影响你自己平时用的浏览器">关闭浏览器</button>
+    </div>
+
+  </aside>
+
+  <!-- 右侧运行区 -->
+  <main class="main">
+
+    <div class="topbar">
+      <div class="stats">
+        <div class="st"><b id="stSent">0</b><i>成功</i></div>
+        <div class="st"><b id="stFail">0</b><i>失败</i></div>
+        <div class="st"><b id="stSkip">0</b><i>跳过</i></div>
+        <div class="st"><b id="stSeen">0</b><i>扫描</i></div>
+      </div>
+      <div class="tabs">
+        <button data-tab="log" class="on">运行日志</button>
+        <button data-tab="rep">历史任务</button>
+      </div>
+      <div class="badge idle" id="badge"><span></span>待命中</div>
+    </div>
+
+    <div class="pane" id="paneLog">
+      <div class="logbox" id="logbox">
+        <div class="empty">
+          <div class="eicon">
+            <svg viewBox="0 0 512 512" fill="none" aria-hidden="true">
+              <path d="M392.8 177 A158 158 0 1 1 335 119.2" stroke="currentColor" stroke-width="34" stroke-linecap="round"/>
+              <path d="M370 141 L336 93 L310 136 Z" fill="currentColor"/>
+              <rect x="182" y="201" width="148" height="110" rx="14" fill="currentColor"/>
+              <path d="M196 216 L256 258 L316 216" stroke="var(--bg2)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="etitle">准备就绪</div>
+          <div class="esub">选好城市，点「开始投递」</div>
+          <div class="ekbd"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="kd">快速开始</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane hide" id="paneRep">
+      <div class="reps" id="taskList"></div>
+      <div class="repview hide" id="taskView">
+        <div class="rvhead">
+          <button class="rvback" id="rvBack">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"></path>
+            </svg>
+            返回
+          </button>
+          <div class="rvtitle" id="rvTitle"></div>
+          <button class="link hide" id="tvReport">投递报告</button>
+          <button class="link danger hide" id="tvDel">删除</button>
+        </div>
+        <div class="rvbody" id="rvBody"></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="prog"><i id="progBar"></i></div>
+      <div class="footrow">
+        <span id="footMsg">等待开始</span>
+        <span class="fspacer"></span>
+        <button class="link" id="btnDir">打开数据目录</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- 版本更新 -->
+<div class="upmask hide" id="upMask">
+  <div class="upcard" id="upCard" role="dialog" aria-modal="true" aria-labelledby="upTitle">
+    <div class="uptop">
+      <div class="upmark">
+        <svg viewBox="0 0 512 512" width="26" height="26" aria-hidden="true">
+          <path d="M392.8 177 A158 158 0 1 1 335 119.2" fill="none" stroke="#57BFA6" stroke-width="38" stroke-linecap="round"/>
+          <path d="M370 141 L336 93 L310 136 Z" fill="#57BFA6"/>
+          <rect x="182" y="201" width="148" height="110" rx="14" fill="#57BFA6"/>
+          <path d="M196 216 L256 258 L316 216" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="upht">
+        <div class="uptitle" id="upTitle">发现新版本</div>
+        <div class="upsub" id="upSub"></div>
+      </div>
+      <div class="upflag" id="upFlag">可选更新</div>
+    </div>
+
+    <div class="upnotes" id="upNotes"></div>
+    <div class="upmeta" id="upMeta"></div>
+
+    <div class="upprog hide" id="upProg">
+      <div class="upbar"><i id="upBar"></i></div>
+      <div class="uprows"><span id="upPct">0%</span><span id="upSpd"></span></div>
+    </div>
+
+    <div class="uperr hide" id="upErr"></div>
+
+    <div class="upact">
+      <button class="ghost" id="upLater">稍后再说</button>
+      <button class="primary" id="upNow">立即更新</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast hide" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
