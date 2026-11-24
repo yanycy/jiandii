@@ -2268,8 +2268,8 @@ const LP_CLICK_FINAL_JS = `(()=>{
       }catch{ return false; } };
       const findIn=doc=>{
         if(!doc) return null;
-        const els=[...doc.querySelectorAll('button,a,span,div,[role="button"]')].filter(vis)
-          .filter(e=>FINAL.test(clean(e.innerText||'')));
+        const els=[...doc.querySelectorAll('*')].filter(vis)
+          .filter(e=>{ const t=clean(e.innerText||''); return t.length<=8 && FINAL.test(t); });
         if(!els.length) return null;
         els.sort((a,b)=>(a.querySelectorAll('*').length)-(b.querySelectorAll('*').length));
         return els[0];
@@ -2298,30 +2298,43 @@ const LP_CHAT_APPLY_JS = `(()=>{
       const click=el=>{ if(!el) return false; el.scrollIntoView({block:'center'});
         const r=el.getBoundingClientRect();
         const o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,view:window};
-        ['mouseenter','mousedown','mouseup','click'].forEach(n=>el.dispatchEvent(new MouseEvent(n,o)));
+        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(n=>el.dispatchEvent(new MouseEvent(n,o)));
         el.click(); return true; };
-      const pickChat=()=>[...document.querySelectorAll('button,a,[class*="chat"],[class*="dialog"],[class*="Chat"]')]
-        .filter(vis).find(e=>/^(聊一聊|聊聊|沟通)$/.test(clean(e.innerText)))||null;
-      const chat=pickChat();
+      // 全元素搜索「聊一聊」，取最内层可见元素（猎聘的按钮可能是 button/span/div 任意一种）
+      const RE=/^(聊一聊|聊聊|沟通)$/;
+      const els=[...document.querySelectorAll('*')].filter(vis).filter(e=>{
+        const t=clean(e.innerText||''); return t.length<=8 && RE.test(t);
+      });
+      els.sort((a,b)=>(a.querySelectorAll('*').length)-(b.querySelectorAll('*').length));
+      const chat=els[0]||null;
       if(!chat) return 'NO_CHAT';
       click(chat);
       return 'CHAT_CLICKED';
     })()`;
 
-/** 聊天窗口内点「发简历」完成投递 */
+/** 聊天窗口内点「发简历」完成投递（猎聘的「发简历」是 span.im-ui-action-button，不是 button/a） */
 const LP_SEND_RESUME_JS = `(()=>{
       const clean=s=>(s||'').replace(/\\s+/g,'').trim();
       const vis=e=>{ if(!e) return false; const r=e.getBoundingClientRect(); const st=getComputedStyle(e);
         return r.width>2 && r.height>2 && st.visibility!=='hidden' && st.display!=='none' && Number(st.opacity)!==0; };
-      const pickSend=()=>[...document.querySelectorAll('button,a,[class*="btn"],[class*="operate"],[class*="action"]')]
-        .filter(vis).find(e=>/^(发简历|发送简历|发送我的简历)$/.test(clean(e.innerText)))||null;
-      const btn=pickSend();
+      const click=el=>{ if(!el) return false; el.scrollIntoView({block:'center'});
+        const r=el.getBoundingClientRect();
+        const o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,view:window};
+        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(n=>el.dispatchEvent(new MouseEvent(n,o)));
+        el.click(); return true; };
+      // 全元素搜索「发简历/发送简历」，优先 im-ui-action-button / action-resume 类
+      const RE=/^(发简历|发送简历|发送我的简历)$/;
+      const els=[...document.querySelectorAll('*')].filter(vis).filter(e=>{
+        const t=clean(e.innerText||''); return t.length<=8 && RE.test(t);
+      });
+      els.sort((a,b)=>{
+        const sc=(x)=>{ const c=String(x.className||''); if(/action-resume|action-item/.test(c)) return 0; if(/-title/.test(c)) return 2; if(/im-ui-action/.test(c)) return 1; return 3; };
+        const ca=sc(a)-sc(b); if(ca) return ca;
+        return (a.querySelectorAll('*').length)-(b.querySelectorAll('*').length);
+      });
+      const btn=els[0]||null;
       if(!btn) return 'NO_SEND_BTN';
-      btn.scrollIntoView({block:'center'});
-      const r=btn.getBoundingClientRect();
-      const o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,view:window};
-      ['mouseenter','mousedown','mouseup','click'].forEach(n=>btn.dispatchEvent(new MouseEvent(n,o)));
-      btn.click();
+      click(btn);
       return 'SEND_CLICKED';
     })()`;
 
