@@ -2526,40 +2526,38 @@ async function runLiepin(cdp, cfg, cityObj, _retry = 0, seed = null) {
         return 'CLICKED';})()`);
         await sleep(2600);
       } else {
-        // 新版猎聘：详情页没有「申请」按钮，走「聊一聊」→「发简历」两段式投递
+        // 新版猎聘：点「聊一聊」即完成投递，无需再点「发简历」
         clicked = await cdp.eval(LP_CHAT_APPLY_JS) || 'NONE';
         await sleep(2600);
-        if (clicked === 'CHAT_CLICKED') {
-          const sendR = await cdp.eval(LP_SEND_RESUME_JS) || 'NONE';
-          clicked += ' -> ' + sendR;
-          await sleep(2600);
-        }
       }
 
-      // 确认弹窗（选简历 / 二次确认 / 发简历后的「立即投递」）
+      // 确认弹窗（仅「申请职位」流程需要二次确认/选简历；「聊一聊」点完即完成，无需再点）
       let confirm = 'NONE';
-      try { confirm = await cdp.eval(LP_CONFIRM_JS) || 'NONE'; } catch {}
-      // 「发简历」会弹出「选择附件简历」框，最后一步是点「立即投递」；弹窗可能异步出现，多轮兜底点
-      // 优先用专门脚本 LP_CLICK_FINAL_JS（含 iframe 兜底），再退回 LP_CONFIRM_JS
-      if (confirm !== 'CONFIRMED') {
-        for (let k = 0; k < 4; k++) {
-          await sleep(900);
-          try {
-            const f = await cdp.eval(LP_CLICK_FINAL_JS) || 'NONE';
-            if (f === 'CLICKED_FINAL') { confirm = 'CONFIRMED'; break; }
-            const c2 = await cdp.eval(LP_CONFIRM_JS) || 'NONE';
-            if (c2 === 'CONFIRMED') { confirm = 'CONFIRMED'; break; }
-          } catch {}
+      if (st.apply) {
+        try { confirm = await cdp.eval(LP_CONFIRM_JS) || 'NONE'; } catch {}
+        // 「申请职位」会弹「选简历 / 二次确认」框，弹窗可能异步出现，多轮兜底点
+        if (confirm !== 'CONFIRMED') {
+          for (let k = 0; k < 4; k++) {
+            await sleep(900);
+            try {
+              const f = await cdp.eval(LP_CLICK_FINAL_JS) || 'NONE';
+              if (f === 'CLICKED_FINAL') { confirm = 'CONFIRMED'; break; }
+              const c2 = await cdp.eval(LP_CONFIRM_JS) || 'NONE';
+              if (c2 === 'CONFIRMED') { confirm = 'CONFIRMED'; break; }
+            } catch {}
+          }
         }
+        if (confirm === 'CONFIRMED') await sleep(2200);
       }
-      if (confirm === 'CONFIRMED') await sleep(2200);
 
       let after = {};
       try { after = JSON.parse(await cdp.eval(LP_APPLY_STATE) || '{}'); } catch {}
       const sig = [...(after.msgs || []), after.apply || '', after.chat || '', ...(after.btns || [])].join(' | ');
       const sentSig = /已申请|已投递|投递成功|申请成功|简历已发送|已发送简历|简历发送成功|已发简历/.test(sig);
+      // 新版猎聘：点「聊一聊」即完成投递，无需再点「发简历」
+      const chatDone = clicked === 'CHAT_CLICKED';
 
-      if (after.applied || sentSig) {
+      if (after.applied || sentSig || chatDone) {
         sent.push(job); applied.add(job.id); blocked = 0;
         taskSent(job);
         log(`${tag} ${C.g('✔')} ${job.title} ${C.d('|')} ${job.sal} ${C.d('|')} ${job.city || '—'}`);

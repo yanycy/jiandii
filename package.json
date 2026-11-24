@@ -1,6 +1,6 @@
 {
   "name": "jiandi",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "简递 · 多平台实习岗位自动投递助手（BOSS直聘 / 牛客 / 智联招聘 / 猎聘）",
   "main": "app/main.js",
   "author": "黄选权",
