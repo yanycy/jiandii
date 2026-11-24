@@ -4,6 +4,8 @@
 
 支持平台：**BOSS 直聘 · 牛客网 · 智联招聘 · 猎聘**
 
+**下载安装包（Windows）**：[简递-Setup-1.0.0.exe](https://jiandidi.oss-cn-shenzhen.aliyuncs.com/%E7%AE%80%E9%80%92-Setup-1.0.0.exe?Expires=1795483580&OSSAccessKeyId=TMP.F31crZZyhmccUHZeJREKMs4t86HWDKBPpKmhFbCQRGcAb9uRrcTczhLawbozM12GriaXpMA1SRzTtixLRFvyVDMKUCyNDGMG6cK1JAebabh7AP&Signature=wsmjYAYEFxt2AmnxdPsMOwzsmig%3D)
+
 ---
 
 ## 它能做什么
