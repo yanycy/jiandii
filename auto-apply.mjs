@@ -2224,14 +2224,25 @@ const LP_CONFIRM_JS = `(()=>{
       const clean=s=>(s||'').replace(/\\s+/g,'').trim();
       const vis=e=>{ if(!e) return false; const r=e.getBoundingClientRect(); const st=getComputedStyle(e);
         return r.width>2 && r.height>2 && st.visibility!=='hidden' && st.display!=='none' && Number(st.opacity)!==0; };
+      const click=el=>{ el.scrollIntoView({block:'center'}); const r=el.getBoundingClientRect();
+        const o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,view:window};
+        ['mouseenter','mousedown','mouseup','click'].forEach(n=>el.dispatchEvent(new MouseEvent(n,o)));
+        el.click(); };
+      // 兜底：全文档找「立即投递/确认投递/确认发送」等最终提交按钮（猎聘「选择附件简历」弹窗可能不是标准 dialog class）
+      const FINAL=/^(立即投递|确认投递|确认发送|确认发简历|投递|立即发送)$/;
+      const pickFinal=()=>[...document.querySelectorAll('button,a')].filter(vis)
+        .find(x=>FINAL.test(clean(x.innerText)))||null;
       const boxes=[...document.querySelectorAll('.ant-modal,.ant-modal-wrap,[class*="dialog"],[class*="Dialog"],[role="dialog"]')].filter(vis);
       for(const b of boxes){
         const t=clean(b.innerText);
         if(/请先完善|完善简历|创建简历/.test(t)) return 'NEED_RESUME';
         const hit=[...b.querySelectorAll('button,a')].filter(vis)
           .find(x=>/^(确定|确认|确认投递|确认发送|确认发简历|投递|发送|立即投递|立即发送|继续投递|申请)$/.test(clean(x.innerText)));
-        if(hit){ hit.click(); return 'CONFIRMED'; }
+        if(hit){ click(hit); return 'CONFIRMED'; }
       }
+      // 弹窗不在标准 dialog class 里时，兜底点「立即投递」
+      const fin=pickFinal();
+      if(fin){ click(fin); return 'CONFIRMED'; }
       return 'NONE';
     })()`;
 
@@ -2468,9 +2479,19 @@ async function runLiepin(cdp, cfg, cityObj, _retry = 0, seed = null) {
         }
       }
 
-      // 确认弹窗（选简历 / 二次确认 / 发简历后的确认）
+      // 确认弹窗（选简历 / 二次确认 / 发简历后的「立即投递」）
       let confirm = 'NONE';
       try { confirm = await cdp.eval(LP_CONFIRM_JS) || 'NONE'; } catch {}
+      // 「发简历」会弹出「选择附件简历」框，最后一步是点「立即投递」；弹窗可能异步出现，多轮兜底点一次
+      if (confirm !== 'CONFIRMED') {
+        for (let k = 0; k < 3; k++) {
+          await sleep(900);
+          try {
+            const c2 = await cdp.eval(LP_CONFIRM_JS) || 'NONE';
+            if (c2 === 'CONFIRMED') { confirm = 'CONFIRMED'; break; }
+          } catch {}
+        }
+      }
       if (confirm === 'CONFIRMED') await sleep(2200);
 
       let after = {};
