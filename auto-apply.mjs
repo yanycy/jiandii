@@ -2194,15 +2194,22 @@ const LP_APPLY_STATE = `(()=>{
         return r.width>2 && r.height>2 && st.visibility!=='hidden' && st.display!=='none' && Number(st.opacity)!==0; };
       const bodyTxt=(document.body.innerText||'').replace(/\\s+/g,'');
       const BTN=/^(申请职位|立即申请|投递简历|立即投递|申请该职位|投个简历|我要申请|申请)$/;
+      const CHAT=/^(聊一聊|聊聊|沟通)$/;
       const btns=[...document.querySelectorAll('.job-apply-container a,.job-apply-container button,.job-apply-operate a,.job-apply-operate button,button,a')]
         .filter(vis).map(e=>({t:clean(e.innerText), cls:String(e.className||'')}))
         .filter(x=>x.t && x.t.length<=10);
       const apply=btns.find(x=>BTN.test(x.t))||null;
+      const chat=btns.find(x=>CHAT.test(x.t))||null;
+      // 聊天窗口内「发简历」按钮（新版猎聘的投递入口）
+      const sendResume=[...document.querySelectorAll('button,a,[class*="btn"],[class*="operate"]')]
+        .filter(vis).find(e=>/^(发简历|发送简历|发送我的简历)$/.test(clean(e.innerText)))||null;
       const msgs=[...document.querySelectorAll('[class*="message"],[class*="toast"],[class*="Message"],[class*="tip"]')]
         .filter(vis).map(e=>clean(e.innerText)).filter(t=>t && t.length<40).slice(0,4);
       return JSON.stringify({
         url: location.href,
         apply: apply? apply.t : '',
+        chat: chat? chat.t : '',
+        hasSendResume: !!sendResume,
         applied: /已申请|已投递|投递成功|申请成功/.test(bodyTxt),
         loginWall: /wow\\.liepin\\.com/i.test(location.href)
           || (!!document.querySelector('input[type="tel"],input[placeholder*="手机号"],input[placeholder*="验证码"]')
@@ -2222,10 +2229,45 @@ const LP_CONFIRM_JS = `(()=>{
         const t=clean(b.innerText);
         if(/请先完善|完善简历|创建简历/.test(t)) return 'NEED_RESUME';
         const hit=[...b.querySelectorAll('button,a')].filter(vis)
-          .find(x=>/^(确定|确认|确认投递|投递|立即投递|继续投递|申请)$/.test(clean(x.innerText)));
+          .find(x=>/^(确定|确认|确认投递|确认发送|确认发简历|投递|发送|立即投递|立即发送|继续投递|申请)$/.test(clean(x.innerText)));
         if(hit){ hit.click(); return 'CONFIRMED'; }
       }
       return 'NONE';
+    })()`;
+
+/** 点「聊一聊」：打开聊天窗口（新版猎聘的直接投递入口） */
+const LP_CHAT_APPLY_JS = `(()=>{
+      const clean=s=>(s||'').replace(/\\s+/g,'').trim();
+      const vis=e=>{ if(!e) return false; const r=e.getBoundingClientRect(); const st=getComputedStyle(e);
+        return r.width>2 && r.height>2 && st.visibility!=='hidden' && st.display!=='none' && Number(st.opacity)!==0; };
+      const click=el=>{ if(!el) return false; el.scrollIntoView({block:'center'});
+        const r=el.getBoundingClientRect();
+        const o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,view:window};
+        ['mouseenter','mousedown','mouseup','click'].forEach(n=>el.dispatchEvent(new MouseEvent(n,o)));
+        el.click(); return true; };
+      const pickChat=()=>[...document.querySelectorAll('button,a,[class*="chat"],[class*="dialog"],[class*="Chat"]')]
+        .filter(vis).find(e=>/^(聊一聊|聊聊|沟通)$/.test(clean(e.innerText)))||null;
+      const chat=pickChat();
+      if(!chat) return 'NO_CHAT';
+      click(chat);
+      return 'CHAT_CLICKED';
+    })()`;
+
+/** 聊天窗口内点「发简历」完成投递 */
+const LP_SEND_RESUME_JS = `(()=>{
+      const clean=s=>(s||'').replace(/\\s+/g,'').trim();
+      const vis=e=>{ if(!e) return false; const r=e.getBoundingClientRect(); const st=getComputedStyle(e);
+        return r.width>2 && r.height>2 && st.visibility!=='hidden' && st.display!=='none' && Number(st.opacity)!==0; };
+      const pickSend=()=>[...document.querySelectorAll('button,a,[class*="btn"],[class*="operate"],[class*="action"]')]
+        .filter(vis).find(e=>/^(发简历|发送简历|发送我的简历)$/.test(clean(e.innerText)))||null;
+      const btn=pickSend();
+      if(!btn) return 'NO_SEND_BTN';
+      btn.scrollIntoView({block:'center'});
+      const r=btn.getBoundingClientRect();
+      const o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,view:window};
+      ['mouseenter','mousedown','mouseup','click'].forEach(n=>btn.dispatchEvent(new MouseEvent(n,o)));
+      btn.click();
+      return 'SEND_CLICKED';
     })()`;
 
 // 采集：多关键词 × 翻页，全靠解析搜索结果页（猎聘接口有反爬签名，直接调会被 400 拒掉）
@@ -2389,16 +2431,18 @@ async function runLiepin(cdp, cfg, cityObj, _retry = 0, seed = null) {
         log(`${tag} ${C.d('已投过')} ${job.title}`);
         continue;
       }
-      if (!st.apply) {
+      if (!st.apply && !st.chat) {
         if (job._seed) { log(`${tag} ${C.d('跳过')} ${job.title} ${C.d('(上次任务的岗位已失效)')}`); continue; }
-        // 只有「聊一聊」的岗位投不了：记成跳过，并把实际按钮写进日志，方便判断页面改版
+        // 既没有「申请」也没有「聊一聊」按钮的岗位投不了：记成跳过，并把实际按钮写进日志，方便判断页面改版
         const others = (st.btns || []).filter(t => /聊|沟通|收藏/.test(t)).join('/') || '无按钮';
         log(`${tag} ${C.d('跳过')} ${job.title} ${C.d('(仅支持沟通：' + others + ')')}`);
         continue;
       }
 
-      // 点「申请职位」
-      const clicked = await cdp.eval(`(()=>{
+      // 点「申请职位」（有直接投递按钮）或「聊一聊 → 发简历」（新版流程）
+      let clicked = '';
+      if (st.apply) {
+        clicked = await cdp.eval(`(()=>{
         const clean=s=>(s||'').replace(/\\s+/g,'').trim();
         const vis=e=>{ if(!e) return false; const r=e.getBoundingClientRect(); const st=getComputedStyle(e);
           return r.width>2 && r.height>2 && st.display!=='none' && st.visibility!=='hidden'; };
@@ -2412,18 +2456,29 @@ async function runLiepin(cdp, cfg, cityObj, _retry = 0, seed = null) {
         ['mouseenter','mousedown','mouseup','click'].forEach(n=>el.dispatchEvent(new MouseEvent(n,o)));
         el.click();
         return 'CLICKED';})()`);
-      await sleep(2600);
+        await sleep(2600);
+      } else {
+        // 新版猎聘：详情页没有「申请」按钮，走「聊一聊」→「发简历」两段式投递
+        clicked = await cdp.eval(LP_CHAT_APPLY_JS) || 'NONE';
+        await sleep(2600);
+        if (clicked === 'CHAT_CLICKED') {
+          const sendR = await cdp.eval(LP_SEND_RESUME_JS) || 'NONE';
+          clicked += ' -> ' + sendR;
+          await sleep(2600);
+        }
+      }
 
-      // 确认弹窗（选简历 / 二次确认）
+      // 确认弹窗（选简历 / 二次确认 / 发简历后的确认）
       let confirm = 'NONE';
       try { confirm = await cdp.eval(LP_CONFIRM_JS) || 'NONE'; } catch {}
       if (confirm === 'CONFIRMED') await sleep(2200);
 
       let after = {};
       try { after = JSON.parse(await cdp.eval(LP_APPLY_STATE) || '{}'); } catch {}
-      const sig = [...(after.msgs || []), after.apply || '', ...(after.btns || [])].join(' | ');
+      const sig = [...(after.msgs || []), after.apply || '', after.chat || '', ...(after.btns || [])].join(' | ');
+      const sentSig = /已申请|已投递|投递成功|申请成功|简历已发送|已发送简历|简历发送成功|已发简历/.test(sig);
 
-      if (after.applied || /已申请|已投递|投递成功|申请成功/.test(sig)) {
+      if (after.applied || sentSig) {
         sent.push(job); applied.add(job.id); blocked = 0;
         taskSent(job);
         log(`${tag} ${C.g('✔')} ${job.title} ${C.d('|')} ${job.sal} ${C.d('|')} ${job.city || '—'}`);

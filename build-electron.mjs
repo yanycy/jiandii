@@ -127,13 +127,22 @@ if (fs.existsSync(exeSrc)) {
 // （它认为应用已打包好），而这里只是把 electron.exe 改名，图标还是
 // Electron 默认的「原子」图标。必须用 rcedit 手动写入，否则安装后
 // 桌面快捷方式/任务栏会显示成 Electron 默认图标。
+// 注意：老版 rcedit 用非 Unicode API，读不了中文路径，所以先复制到
+// 系统临时目录（纯 ASCII 路径）改完再覆盖回来。
 const iconFile = path.join(__dirname, 'build', 'icon.ico');
 if (fs.existsSync(exeDst) && fs.existsSync(iconFile)) {
   const rcedit = path.join(__dirname, 'node_modules', 'electron-winstaller', 'vendor', 'rcedit.exe');
   if (fs.existsSync(rcedit)) {
     log('写入应用图标...');
     try {
-      execFileSync(rcedit, [exeDst, '--set-icon', iconFile], { stdio: 'ignore' });
+      const tmpExe = path.join(os.tmpdir(), 'jiandi-icon.exe');
+      const tmpIco = path.join(os.tmpdir(), 'jiandi-icon.ico');
+      fs.copyFileSync(exeDst, tmpExe);
+      fs.copyFileSync(iconFile, tmpIco);
+      execFileSync(rcedit, [tmpExe, '--set-icon', tmpIco], { stdio: 'ignore' });
+      fs.copyFileSync(tmpExe, exeDst);
+      fs.unlinkSync(tmpExe);
+      fs.unlinkSync(tmpIco);
       log('图标已写入（icon.ico）');
     } catch (e) {
       log('⚠ 图标写入失败：' + e.message);
