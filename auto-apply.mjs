@@ -69,6 +69,7 @@ const DEFAULT_CFG = {
   keywords: [],
   bossKeywords: [],
   bossType: 'intern',        // BOSS「求职类型」：all=不限 / fulltime=全职 / parttime=兼职 / intern=实习
+  aiFilter: false,           // 方向过滤：false=不筛选（搜到什么投什么）/ true=大模型判断同行业才保留
   nkKeywords: [],
   nkRecruitType: 'intern',   // intern=实习 / campus=校招 / all=全部职位
   nkEdu: '不限',             // 牛客「学历要求」筛选：不限 / 专科 / 本科 / 硕士
@@ -1012,11 +1013,6 @@ function parseBossCard(x) {
   return { id: x.id, title, sal, exp, edu, co, area, isIntern };
 }
 
-// 方向词表：从「关键词 + 期望工作方向」推导，命中才算这个方向内的岗位。
-// 原来的 GOOD 只有通用词，导致「测试工程师 / 项目经理 / .NET / java(小写)」这类明显相关的岗位被误杀，
-// 而「水气环境监测设备运维」这种只因含「运维」被放行 —— 所以现在关键词优先，词表只做兜底。
-const GOOD = /前端|后端|全栈|Web|web|Vue|React|Node|小程序|H5|Java|java|Python|Golang|\.NET|dotnet|C\+\+|C#|开发|研发|软件|实施|交付|技术支持|技术工程师|技术支持工程师|测试工程师|自动化测试|运维|系统集成|系统|数据|大数据|AI|人工智能|算法|爬虫|IT|计算机|信息|产品助理|项目助理|项目经理|项目专员|程序员|网络安全|信息安全|FDE|解决方案|售前|驻场|客户成功|低代码|数字化|信息化/i;
-const BAD = /销售|行政|人事|人力资源|财务|会计|文员|录入|设计实习|美工|剪辑|短视频|短剧|主播|客服|话务|教师|讲师|助教|老师|培训|造价|资料员|跟单|采购|仓管|物流|司机|保安|保洁|护士|医药|药学|药代|临床|法务|律师|操盘|交易员|信贷|理财|保险|柜员|游戏测试|电脑维修|维修师傅|维修技术|维修|电工|焊工|数控|模具|美容|美发|餐饮|厨师|导购|店长|收银|储备干部|外呼|电销|编剧|运营助理|数据运营|充电桩|储能|档案|标注|数据采集|纯文字沟通|小白|普工|临时工|打包员|分拣|质检|测量|施工|土木|建筑|装饰|景观|制版|服装|幼教|保育|社工|针灸|推拿|中医|护理|教练|助教|顾问|外贸|报关|翻译|银行|证券|审计|税务|资产评估|商务助理|业务助理|客服专员|运营专员|新媒体|直播|摄影|后期|动画|原画|建模|室内设计|平面设计|视觉设计|工业设计|ui设计|ui设计师|ue设计|交互设计|管培生/i;
 const CITYRE = /(南宁|柳州|桂林|北海|玉林|梧州|钦州|贵港|百色|河池|来宾|崇左|贺州|防城港|北京|上海|广州|深圳|杭州|成都|南京|武汉|西安|苏州|厦门|长沙|重庆|天津|合肥|郑州|青岛|大连|福州|无锡|东莞|佛山|宁波|济南|珠海|南昌)/;
 // BOSS 卡片的字段识别（卡片文字顺序不稳定，按特征匹配比按下标取稳）
 const BOSS_EDU_RE = /^(大专|本科|硕士|博士|中专\/中技|中专|高中|初中及以下|学历不限|不限)$/;
@@ -1035,20 +1031,101 @@ function scoreBoss(r) {
   return s;
 }
 
-/** 方向判定：先认「我搜的词」，再用方向词表兜底，最后才用无关词表排除 */
-function bossDirFilter(cfg) {
-  const kws = [...new Set((cfg.bossKeywords || [])
-    .map(s => String(s || '').trim().toLowerCase())
-    .filter(s => s.length >= 2))];
-  return title => {
-    const t = String(title || '');
-    const tl = t.toLowerCase();
-    // 标题里直接出现搜索词（前端开发 / Vue / 实施 / 售前 / FDE…）→ 就是我想要的方向
-    if (kws.some(k => tl.includes(k))) return true;
-    if (BAD.test(t)) return false;
-    return GOOD.test(t);
-  };
+
+// ------------------------------------------------------------------ AI 方向过滤
+// 普通模式：不筛选，平台返回什么就投什么。
+// AI 模式：把岗位丢给大模型，按「关键词=行业」判定是否同行业相关，只保留相关的。
+const AI_JUDGE_CHUNK = 20;
+
+/** 从模型输出里抠出 JSON（容忍 ```json 包裹、前后废话） */
+function extractJsonLoose(text) {
+  let s = String(text || '').trim();
+  s = s.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const a = s.indexOf('{');
+  const b = s.lastIndexOf('}');
+  if (a >= 0 && b > a) s = s.slice(a, b + 1);
+  try { return JSON.parse(s); } catch { return null; }
 }
+
+/** 判定一批岗位，返回与 batch 同序的 [{ok, why}]；解析不出来就返回 null（调用方放行） */
+async function aiJudgeBatch(keywords, batch) {
+  const list = batch.map((r, i) => `${i}. ${r.title}｜${r.co || '公司未知'}｜${r.sal || ''}｜${r.exp || ''} ${r.edu || ''}`.replace(/\s+/g, ' ')).join('\n');
+  const sys = [
+    '你是招聘岗位的相关性判定器。用户输入的检索关键词代表他要找的行业或职能方向。',
+    '判定标准：岗位属于关键词所指的同一行业、或与该方向相近的职能，就判为相关；跨行业才判为不相关。',
+    '示例一：关键词「web开发」→ 计算机 / 软件 / 互联网行业的所有岗位都算相关（前端、后端、测试、实施、运维、技术支持、产品助理等）。',
+    '示例二：关键词「幼儿教师」→ 幼儿教育 / 学前教育行业的所有岗位都算相关（幼师、保育员、早教、课程顾问等）。',
+    '偏向放宽，不要错杀：只要岗位名称或公司业务与该行业沾边，就判 1。',
+    '只输出 JSON，不要任何解释。格式：{"r":[{"i":0,"v":1,"why":"十个字内理由"}]}',
+  ].join('\n');
+  const usr = `关键词：${keywords.join(' / ')}\n\n待判定岗位：\n${list}\n\n逐条给结论：v=1 相关，v=0 不相关。必须覆盖上面每一条的 i。`;
+  const resp = await Agt.llmChat([
+    { role: 'system', content: sys },
+    { role: 'user', content: usr },
+  ], { temperature: 0, maxTokens: 1200 });
+  // llmChat 返回 { content, usage, model }，别直接当字符串用
+  const out = resp && typeof resp === 'object' ? resp.content : resp;
+  const j = extractJsonLoose(out);
+  if (!j || !Array.isArray(j.r)) return null;
+  const map = new Map();
+  for (const it of j.r) {
+    const i = Number(it && it.i);
+    if (!Number.isFinite(i) || i < 0 || i >= batch.length) continue;
+    map.set(i, { ok: Number(it.v) === 1, why: String(it.why || '').slice(0, 20) });
+  }
+  if (map.size < batch.length) return null;   // 覆盖不全就当这批没判出来
+  return batch.map((_, i) => map.get(i));
+}
+
+/** 用大模型做方向过滤：返回保留的岗位；模型不可用 / 判定失败时整体放行，绝不静默丢弃 */
+async function aiFilterJobs(cfg, items) {
+  const keywords = [...new Set((cfg.keywords || cfg.bossKeywords || [])
+    .map(s => String(s || '').trim()).filter(Boolean))];
+  if (!keywords.length || !items.length) return items;
+
+  try {
+    if (!Agt.agentState().hasKey) {
+      warn('AI 过滤已开启，但还没填 API Key（设置 → API Key）：本轮不筛选，全部岗位照常投递');
+      return items;
+    }
+  } catch {}
+
+  const keep = [];
+  const drop = [];
+  for (let i = 0; i < items.length; i += AI_JUDGE_CHUNK) {
+    const batch = items.slice(i, i + AI_JUDGE_CHUNK);
+    logPart(C.d(`  AI 判定 ${i + 1}-${i + batch.length}/${items.length} ... `));
+    let verdicts = null;
+    try {
+      verdicts = await aiJudgeBatch(keywords, batch);
+    } catch (e) {
+      warn(`调用模型失败：${e.message}（本批 ${batch.length} 个全部放行）`);
+    }
+    if (!verdicts) {
+      keep.push(...batch);
+      log(C.d('放行'));
+      continue;
+    }
+    batch.forEach((it, idx) => {
+      const v = verdicts[idx];
+      if (!v) { keep.push(it); return; }
+      if (v.ok) keep.push(it);
+      else drop.push({ ...it, why: v.why });
+    });
+    log(C.d(`保留 ${keep.length} / 剔除 ${drop.length}`));
+  }
+
+  if (drop.length) {
+    log('');
+    info(`AI 判为不相关的 ${drop.length} 个（示例）：`);
+    for (const d of drop.slice(0, 8)) {
+      log(C.d(`    ✕ ${d.title}｜${d.co || ''}${d.why ? '｜' + d.why : ''}`));
+    }
+    if (drop.length > 8) log(C.d(`    …其余 ${drop.length - 8} 个略`));
+  }
+  return keep;
+}
+
 
 // ------------------------------------------------------------------ BOSS 求职类型
 // 与 BOSS 搜索页「求职类型」下拉一致：不限 / 全职 / 兼职 / 实习
@@ -1172,20 +1249,26 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
     return null;
   }
 
-  // 2) 筛选
+  // 2) 筛选：普通模式不筛选（平台返回什么就投什么）；开了 AI 过滤才用大模型判同行业
   const poolArr = [...pool.values()];
   const internCnt = poolArr.filter(r => r.isIntern).length;
-  const dirOk = bossDirFilter(cfg);
-  const picked = poolArr.filter(r => {
-    if (!dirOk(r.title)) return false;
-    if (typeKey === 'intern') return r.isIntern;        // 只要实习（页面已按 jobType=1902 筛过，这里兜底）
-    if (typeKey === 'fulltime') return !r.isIntern;     // 全职：排除实习卡
-    if (typeKey === 'parttime') return true;            // 兼职由页面筛，本地不再区分
-    return r.isIntern || /经验不限|在校|应届|1年以内/.test(r.exp);
-  }).map(r => ({ ...r, score: scoreBoss(r) })).sort((a, b) => b.score - a.score);
-
   log('');
-  ok(`池 ${pool.size}（实习 ${internCnt}）→ 符合条件 ${picked.length}${pool.size > picked.length ? `，方向不符 ${pool.size - picked.length}` : ''}`);
+  let picked = poolArr;
+  if (cfg.aiFilter) {
+    info(`AI 过滤：用模型判定岗位是否与「${(cfg.keywords || []).join(' / ')}」同行业`);
+    picked = await aiFilterJobs(cfg, poolArr);
+    ok(`池 ${pool.size}（实习 ${internCnt}）→ AI 判定相关 ${picked.length}${pool.size > picked.length ? `，剔除 ${pool.size - picked.length}` : ''}`);
+  } else {
+    ok(`池 ${pool.size}（实习 ${internCnt}）→ 不筛选，全部进入投递队列`);
+    if (typeKey === 'intern' && internCnt < pool.size) {
+      warn(`其中 ${pool.size - internCnt} 个不是实习岗（平台筛选没兜住），普通模式照投；要拦就开「AI 过滤」`);
+    }
+    if (typeKey === 'fulltime' && internCnt > 0) {
+      warn(`其中 ${internCnt} 个是实习岗（平台筛选没兜住），普通模式照投`);
+    }
+  }
+  picked = picked.map(r => ({ ...r, score: scoreBoss(r) })).sort((a, b) => b.score - a.score);
+
   if (!picked.length) {
     if (typeKey === 'intern') {
       warn(`「${cityObj.name}」这些关键词下没搜到实习岗（本轮 ${pool.size} 条里实习 ${internCnt} 条）`);
@@ -1534,29 +1617,21 @@ async function runNowcoder(cdp, cfg, cityObj, _retry = 0, seed = null) {
     else warn('城市下拉没能选上，本轮改为按卡片城市文字过滤');
   }
 
-  // 筛选：只要明确写「实习」的
-  const BADNK = /销售|客服|运营|教师|助教|编辑|文案|剪辑|美工|人事|行政|财务|招聘|主播|标注|算法|嵌入式|硬件|结构|电气|机械|测绘|造价|医药|律师|U3D|Unity|游戏|原画|动画|数据分析|数据挖掘|机器学习|深度学习|NLP|C\+\+|BSP|影像|电池|电芯|内核/;
-  const GOODNK = /前端|全栈|Web|web|Vue|React|Node|小程序|FDE|交付|实施|技术支持|驻场|技术顾问|售前|解决方案|客户成功|低代码|数字化|信息化|Python|Java|Golang|数据开发|AI应用|大模型|Agent|AI开发|AI工程|软件开发|软件工程|研发工程|产品助理|项目助理/;
-  const picked = [];
+  // 候选池：普通模式本地不做方向筛选（平台返回什么就投什么）；开了 AI 过滤才交给大模型判同行业
+  const all = [];
   const cityLocal = cityName && cityOk === 0;   // 下拉没点上时的兜底：按卡片城市文字过滤
+  let notInternCnt = 0;
   for (const x of pool.values()) {
     const t = x.t;
     if (cityLocal) {
       const hay = (x.card || '') + ' ' + t;
       if (!hay.includes(cityName) && !/全国|远程|不限地点/.test(hay)) continue;
     }
-    // 已成功切到官方「实习」筛选时，不再要求标题里带「实习」二字
-    if (!(typeKey === 'intern' && internTabOk)) {
-      if (!/实习/.test(t)) continue;
-    } else if (/社招/.test(x.card || '') && !/实习/.test(x.card || '')) {
-      continue;
-    }
-    if (/2028|28届|硕士|博士|研究生/.test(t) && !/本科|大专|统招/.test(t)) continue;
     let title = t.replace(/^(实习|校招|社招|全职)\s*[|｜]\s*/, '');
     const cut = title.search(/\d+\s*-\s*\d+元|薪资面议|\d+-\d+K/);
     if (cut > 0) title = title.slice(0, cut).trim();
     if (!title || title.length < 4) continue;
-    if (BADNK.test(title) || !GOODNK.test(title)) continue;
+    if (!/实习/.test(t) && !/实习/.test(x.card || '')) notInternCnt++;
     const city = (t.match(CITYRE) || [])[1] || ((x.card || '').match(CITYRE) || [])[1] || cityName || '';
     const sal = (t.match(/(\d+-\d+元\/天|薪资面议|\d+-\d+K)/) || [])[1] || '';
     let score = 0;
@@ -1564,16 +1639,26 @@ async function runNowcoder(cdp, cfg, cityObj, _retry = 0, seed = null) {
     if (/交付|实施|技术支持|售前|解决方案|客户成功|FDE/.test(title)) score += 14;
     if (/AI|大模型|Agent/.test(title)) score += 8;
     if (/Python|Java|Golang|数据开发|软件开发|研发/.test(title)) score += 5;
-    picked.push({ id: x.id, title: title.slice(0, 44), sal, city, co: x.co || '—', score });
+    all.push({ id: x.id, title: title.slice(0, 44), sal, city, co: x.co || '—', score });
   }
-  picked.sort((a, b) => b.score - a.score);
+  all.sort((a, b) => b.score - a.score);
 
   log('');
-  ok(`池 ${pool.size} → 符合条件 ${picked.length}`);
+  let picked = all;
+  if (cfg.aiFilter) {
+    info(`AI 过滤：用模型判定岗位是否与「${(cfg.keywords || []).join(' / ')}」同行业`);
+    picked = await aiFilterJobs(cfg, all);
+    ok(`池 ${pool.size} → AI 判定相关 ${picked.length}${all.length > picked.length ? `，剔除 ${all.length - picked.length}` : ''}`);
+  } else {
+    ok(`池 ${pool.size} → 不筛选，全部进入投递队列`);
+    if (typeKey === 'intern' && notInternCnt) {
+      warn(`其中 ${notInternCnt} 个标题没写「实习」（平台筛选没兜住），普通模式照投；要收紧就开「AI 过滤」`);
+    }
+  }
   if (!picked.length) {
     if (cityName) {
-      warn(`「${cityName}」没有符合条件的${typeLabel}岗，换个城市（如广州/深圳）再试`);
-    } else warn('没有符合条件的实习岗');
+      warn(`「${cityName}」没有可投的${typeLabel}岗，换个城市（如广州/深圳）再试`);
+    } else warn('没有可投的岗位（换个关键词再试）');
     return null;
   }
 
@@ -2030,20 +2115,17 @@ async function runZhilian(cdp, cfg, cityObj, _retry = 0, seed = null) {
     err('没采集到岗位：可能未登录智联（请在浏览器窗口登录后重试），或该城市该关键词无结果'); return null;
   }
 
-  // 方向过滤
-  const ZH_BAD = /销售|客服|话务|电销|外呼|行政|人事|人力资源|财务|会计|出纳|文员|录入|档案|美工|剪辑|短视频|主播|带货|教师|讲师|助教|培训|造价|预算|资料员|跟单|采购|仓管|物流|司机|保安|保洁|护士|医药|法务|律师|保险|信贷|理财|柜员|导购|店长|储备干部|普工|操作工|叉车|打包|分拣|质检|美容|餐饮|厨|房产|中介|招商|渠道|BD|拓展|市场|文案|编辑|策划|设计|平面|UI|运营|算法|嵌入式|硬件|结构|电气|机械|测绘|医药代表|标注/;
-  const ZH_GOOD = /前端|全栈|Web|web|Vue|React|Node|小程序|FDE|交付|实施|技术支持|驻场|技术顾问|售前|解决方案|客户成功|低代码|数字化|信息化|Python|Java|Golang|数据开发|AI应用|大模型|Agent|AI开发|AI工程|软件开发|软件工程|研发工程|开发工程师|技术员|运维|系统集成|IT|程序员|产品助理|项目助理/;
-
-  const picked = [];
+  // 候选池：普通模式本地不做方向筛选（平台返回什么就投什么）；开了 AI 过滤才交给大模型判同行业
+  let picked = [];
+  let wtMismatch = 0;
   for (const x of pool.values()) {
     if (x.applied) continue;                       // 智联自己标记的已投递
     const t = x.title;
     if (!t || t.length < 4) continue;
-    if (ZH_BAD.test(t) || !ZH_GOOD.test(t)) continue;
     if (edu !== '不限' && x.edu && !/学历不限/.test(x.edu) && !x.edu.includes(edu)) continue;
-    // 工作性质：页面已筛选时完全信任服务端结果，避免个别卡片缺字段被误杀
+    // 工作性质不再本地剔除：平台筛选没兜住的也照投，只统计出来提示
     const wtKey = zhWtKey(x);
-    if (!pageFiltered && typeKey !== 'all' && wtKey !== typeKey) continue;
+    if (!pageFiltered && typeKey !== 'all' && wtKey !== typeKey) wtMismatch++;
     let score = 0;
     if (wtKey === 'intern') score += 100;
     else if (wtKey === 'campus') score += 70;
@@ -2081,7 +2163,17 @@ async function runZhilian(cdp, cfg, cityObj, _retry = 0, seed = null) {
     if (wtCnt[k] !== undefined) wtCnt[k]++;
   }
   log('');
-  ok(`池 ${pool.size} → 符合条件 ${picked.length}${typeKey === 'all' ? `（其中实习 ${internCnt}）` : ''}`);
+  if (cfg.aiFilter) {
+    info(`AI 过滤：用模型判定岗位是否与「${(cfg.keywords || []).join(' / ')}」同行业`);
+    const before = picked.length;
+    picked = await aiFilterJobs(cfg, picked);
+    ok(`池 ${pool.size} → AI 判定相关 ${picked.length}${before > picked.length ? `，剔除 ${before - picked.length}` : ''}`);
+  } else {
+    ok(`池 ${pool.size} → 不筛选，全部进入投递队列${typeKey === 'all' ? `（其中实习 ${internCnt}）` : ''}`);
+    if (!pageFiltered && typeKey !== 'all' && wtMismatch) {
+      warn(`其中 ${wtMismatch} 个工作性质与「${ZH_TYPE_LABEL[typeKey] || typeKey}」不符（平台筛选没兜住），普通模式照投`);
+    }
+  }
   if (!picked.length) {
     const dist = `本轮采集到：实习 ${wtCnt.intern} · 全职 ${wtCnt.fulltime} · 兼职 ${wtCnt.parttime} · 校园 ${wtCnt.campus}`;
     if (typeKey === 'intern') {
@@ -2091,7 +2183,7 @@ async function runZhilian(cdp, cfg, cityObj, _retry = 0, seed = null) {
       warn(`「${cityName || '全国'}」没有可投的校园岗（${dist}）`);
       info('「校园」多是校招专场，岗位少；可切到「不限」或「实习」再试');
     } else {
-      warn(`「${cityName || '全国'}」没有符合条件的岗位（${dist}），换个城市或关键词再试`);
+      warn(`「${cityName || '全国'}」没有可投的岗位（${dist}），换个城市或关键词再试`);
     }
     return null;
   }
@@ -2434,28 +2526,17 @@ async function lpCollect(cdp, cfg, cityName) {
   return { pool, pageErr };
 }
 
-// 技术相关岗位筛选（各平台共用同一份词表）
-const LP_BAD = /销售|客服|运营|教师|助教|讲师|编辑|文案|剪辑|美工|人事|行政|财务|会计|出纳|招聘|主播|标注|算法|嵌入式|硬件|结构|电气|机械|测绘|造价|医药|护理|律师|幼师|保育|餐厅|厨师|导购|收银|保安|保洁|库管|仓管|司机|普工|质检|化学|生物|环境|土木|建筑|水电|预算|电工|焊工|模具|数控|汽车|美容|美发|摄影|直播|地推|业务员|店长|督导|翻译|外贸|法务|审计|税务|保险|银行|证券|房产|中介|维修|农林|农业|消防|采样|检测|化验|机电|弱电|强电|测量|施工|安装|售后|驾驶|仓储|物流|物业|餐饮|文员/;
-const LP_GOOD = /前端|全栈|Web|web|Vue|React|Node|小程序|H5|FDE|交付|实施|技术支持|驻场|技术顾问|售前|解决方案|客户成功|低代码|数字化|信息化|Python|Java|Golang|Go开发|数据开发|数据分析|AI|人工智能|大模型|Agent|软件开发|软件工程|研发工程|程序员|开发工程师|软件测试|测试工程师|运维|产品助理|项目助理|系统集成|网络工程|信息系统|计算机|信息科技/;
-
-/** 从采集池挑岗位：技术相关 + 工作性质 + 学历不高于所选 */
+/** 从采集池挑岗位：只按学历上限过滤（方向交给 AI / 平台），不做本地词表筛选 */
 function lpPick(pool, cfg, cityName) {
-  const typeKey = cfg.lpType || 'intern';
   const eduKey = cfg.lpEdu || '不限';
   const eduMax = eduKey === '不限' ? 99 : (LP_EDU_RANK[eduKey] || 99);
   const picked = [];
   for (const x of pool.values()) {
     const t = x.title || '';
     if (!t || t.length < 3) continue;
-    if (LP_BAD.test(t) || !LP_GOOD.test(t)) continue;
     const tag = `${x.exp || ''} ${x.edu || ''}`;
-    // 工作性质：猎聘没有可靠的「实习」筛选参数，按标题/标签兜一层
-    if (typeKey === 'intern' && !/实习|在校|应届/.test(t + tag)) continue;
-    if (typeKey === 'fulltime' && /实习|兼职/.test(t)) continue;
-    if (typeKey === 'parttime' && !/兼职|临时/.test(t)) continue;
     const rank = LP_EDU_RANK[x.edu] ?? 0;
-    if (rank > eduMax) continue;
-    if (/2028|28届|29届|博士/.test(t) && !/本科|大专|统招/.test(t)) continue;
+    if (rank > eduMax) continue;          // 学历上限是用户自己设的硬条件，保留
     let score = 0;
     if (/前端|全栈|Web|Vue|小程序|H5/.test(t)) score += 12;
     if (/交付|实施|技术支持|售前|解决方案|客户成功|FDE/.test(t)) score += 14;
@@ -2465,6 +2546,7 @@ function lpPick(pool, cfg, cityName) {
     picked.push({
       id: x.id, title: t.slice(0, 44), co: x.co || '—', sal: x.sal || '面议',
       city: x.city || cityName || '', edu: x.edu || '', rec: x.rec || '', url: x.url || '', score,
+      isIntern: /实习|在校|应届/.test(t + tag),
     });
   }
   picked.sort((a, b) => b.score - a.score);
@@ -2503,11 +2585,22 @@ async function runLiepin(cdp, cfg, cityObj, _retry = 0, seed = null) {
     return null;
   }
 
-  const picked = lpPick(pool, cfg, place === '全国' ? '' : place);
+  let picked = lpPick(pool, cfg, place === '全国' ? '' : place);
   log('');
-  ok(`池 ${pool.size} → 符合条件 ${picked.length}`);
+  if (cfg.aiFilter) {
+    info(`AI 过滤：用模型判定岗位是否与「${(cfg.keywords || []).join(' / ')}」同行业`);
+    const before = picked.length;
+    picked = await aiFilterJobs(cfg, picked);
+    ok(`池 ${pool.size} → AI 判定相关 ${picked.length}${before > picked.length ? `，剔除 ${before - picked.length}` : ''}`);
+  } else {
+    ok(`池 ${pool.size} → 不筛选，全部进入投递队列`);
+    const miss = picked.filter(r => !r.isIntern).length;
+    if (typeKey === 'intern' && miss) {
+      warn(`其中 ${miss} 个标题没写「实习/在校/应届」（猎聘无服务端筛选），普通模式照投；要收紧就开「AI 过滤」`);
+    }
+  }
   if (!picked.length) {
-    warn(`没有符合「${(cfg.lpKeywords || []).join('/')}」的${typeLabel}岗，可换个关键词或把工作性质改成「不限」`);
+    warn(`没有可投的${typeLabel}岗，可换个关键词或把工作性质改成「不限」`);
     return null;
   }
 
@@ -3023,7 +3116,7 @@ export {
 };
 
 // 仅用于自动化测试：登录判定与跨标签页同步
-export const __test = { loginPending, captchaPending, waitForLogin, loggedInElsewhere, resyncWorkPage, LOGIN_JS, OTHER_TAB_JS, findBrowser, browserCandidates, chromeRunning, startChrome, zhApplyByDetail, zhApplyOne };
+export const __test = { loginPending, captchaPending, waitForLogin, loggedInElsewhere, resyncWorkPage, LOGIN_JS, OTHER_TAB_JS, findBrowser, browserCandidates, chromeRunning, startChrome, zhApplyByDetail, zhApplyOne, aiJudgeBatch, aiFilterJobs, extractJsonLoose };
 
 // ------------------------------------------------------------------ 智能体
 // 复用同一个数据目录、日志管道和浏览器调试连接，不额外起进程、不碰投递主链路

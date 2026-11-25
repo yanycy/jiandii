@@ -178,6 +178,7 @@ html:not([data-theme="light"]) .ico-moon{display:none}
 .chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .chips.type{grid-template-columns:repeat(3,1fr)}
 .chips.s3{grid-template-columns:repeat(3,1fr)}
+.chips.s2{grid-template-columns:repeat(2,1fr)}
 .chips button{
   height:29px;border-radius:8px;border:1px solid var(--line);
   background:var(--panel);color:var(--txt2);

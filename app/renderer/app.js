@@ -10,6 +10,7 @@ const S = {
   platform: 'boss',
   city: '南宁',
   bossType: 'intern',
+  aiFilter: false,
   nkType: 'intern',
   nkEdu: '不限',
   zhType: 'intern',
@@ -363,6 +364,8 @@ function fillEdu() {
   const bt = ['all', 'fulltime', 'parttime', 'intern'].includes(S.bossType) ? S.bossType : 'intern';
   const bc = $('bossTypeChips');
   if (bc) bc.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.btype === bt));
+  document.querySelectorAll('.aiChips').forEach(box =>
+    box.querySelectorAll('button').forEach(b => b.classList.toggle('on', (b.dataset.ai === '1') === !!S.aiFilter)));
 
   const lt = ['all', 'fulltime', 'parttime', 'intern'].includes(S.lpType) ? S.lpType : 'intern';
   const lc = $('lpTypeChips');
@@ -867,6 +870,7 @@ function start(extra) {
     max,
     keywords,
     bossType: S.bossType,
+    aiFilter: !!S.aiFilter,
     nkType: S.nkType,
     nkEdu: S.nkEdu,
     zhType: S.zhType,
@@ -879,7 +883,7 @@ function start(extra) {
   // 记住关键词与数量
   if (S.cfg) {
     if (S.platform === 'boss') {
-      S.cfg.keywords = keywords; S.cfg.bossMax = max; S.cfg.bossType = S.bossType; S.cfg.city = S.city;
+      S.cfg.keywords = keywords; S.cfg.bossMax = max; S.cfg.bossType = S.bossType; S.cfg.aiFilter = S.aiFilter; S.cfg.city = S.city;
     } else if (S.platform === 'zh') {
       S.cfg.keywords = keywords; S.cfg.zhMax = max;
       S.cfg.zhType = S.zhType; S.cfg.zhEdu = S.zhEdu;
@@ -1475,6 +1479,7 @@ async function init() {
   S.cities = st.cities || [];
   S.allCities = st.allCities || S.cities;
   S.bossType = ['all', 'fulltime', 'parttime', 'intern'].includes(st.cfg.bossType) ? st.cfg.bossType : 'intern';
+  S.aiFilter = !!st.cfg.aiFilter;
   S.nkType = st.cfg.nkRecruitType || 'intern';
   S.nkEdu = st.cfg.nkEdu || '不限';
   S.zhType = ['all', 'fulltime', 'parttime', 'intern', 'campus'].includes(st.cfg.zhType) ? st.cfg.zhType : 'intern';
@@ -1571,6 +1576,18 @@ function bind() {
     S.zhEdu = b.dataset.edu;
     $('zhEduChips').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     if (S.cfg) { S.cfg.zhEdu = S.zhEdu; bridge.saveCfg(S.cfg); }
+  });
+
+  document.querySelectorAll('.aiChips').forEach(box => {
+    box.onclick = e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      S.aiFilter = b.dataset.ai === '1';
+      document.querySelectorAll('.aiChips').forEach(x =>
+        x.querySelectorAll('button').forEach(y => y.classList.toggle('on', y.dataset.ai === b.dataset.ai)));
+      if (S.cfg) { S.cfg.aiFilter = S.aiFilter; bridge.saveCfg(S.cfg); }
+      toast(S.aiFilter ? '已开启 AI 过滤：只投与关键词同行业的岗位（四个平台通用）' : '已关闭过滤：搜到什么投什么');
+    };
   });
 
   $('bossTypeChips') && ($('bossTypeChips').onclick = e => {

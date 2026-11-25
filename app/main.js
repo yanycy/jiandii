@@ -314,6 +314,8 @@ ipcMain.on('run:start', async (evt, opts) => {
     cfg.nkKeywords = opts.keywords.slice();
     cfg.zhKeywords = opts.keywords.slice();
     cfg.lpKeywords = opts.keywords.slice();
+    // 方向过滤是四平台共用开关，不绑在某一个平台上
+    if (typeof opts.aiFilter === 'boolean') cfg.aiFilter = opts.aiFilter;
     if (opts.platform === 'boss') {
       if (opts.bossType) cfg.bossType = opts.bossType;
     } else if (opts.platform === 'zh') {
