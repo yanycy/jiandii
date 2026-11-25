@@ -9,6 +9,8 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { spawn, execSync, execFileSync } from 'node:child_process';
 import { discover, connect, portOpen, sleep } from './lib/cdp.mjs';
+// 智能体（知识库驱动的 AI 自动回复），作为独立模块挂在投递主链路旁边
+import * as Agt from './lib/agent.mjs';
 
 // ------------------------------------------------------------------ 路径
 function resolveAppDir() {
@@ -2969,3 +2971,29 @@ export {
 
 // 仅用于自动化测试：登录判定与跨标签页同步
 export const __test = { loginPending, captchaPending, waitForLogin, loggedInElsewhere, resyncWorkPage, LOGIN_JS, OTHER_TAB_JS, findBrowser, browserCandidates, chromeRunning, startChrome, zhApplyByDetail, zhApplyOne };
+
+// ------------------------------------------------------------------ 智能体
+// 复用同一个数据目录、日志管道和浏览器调试连接，不额外起进程、不碰投递主链路
+Agt.initAgent({
+  dataDir: DATA_DIR,
+  log,
+  sleep,
+  ensureChrome: p => ensureChrome(p),
+  getCdp: () => getCdp(),
+});
+
+export const agentApi = {
+  state: Agt.agentState,
+  saveCfg: Agt.agentSaveCfg,
+  kbLoad: Agt.kbLoad,
+  kbSave: Agt.kbSave,
+  kbReset: Agt.kbReset,
+  parseResume: Agt.parseResumeFile,
+  test: Agt.agentTest,
+  tryReply: Agt.agentTryReply,
+  start: Agt.agentStart,
+  stop: Agt.agentStop,
+  scanOnce: Agt.agentScanOnce,
+  diag: Agt.agentDiag,
+  status: Agt.agentWatchStatus,
+};

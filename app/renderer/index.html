@@ -191,6 +191,7 @@
       <div class="tabs">
         <button data-tab="log" class="on">运行日志</button>
         <button data-tab="rep">历史任务</button>
+        <button data-tab="ai">智能体</button>
       </div>
       <div class="badge idle" id="badge"><span></span>待命中</div>
     </div>
@@ -228,6 +229,130 @@
           <button class="link danger hide" id="tvDel">删除</button>
         </div>
         <div class="rvbody" id="rvBody"></div>
+      </div>
+    </div>
+
+    <div class="pane hide" id="paneAi">
+      <div class="aisub">
+        <button data-ai="kb" class="on">知识库</button>
+        <button data-ai="run">值守与设置</button>
+        <button data-ai="test">试运行</button>
+        <span class="aiflex"></span>
+        <span class="aistate" id="aiState">尚未配置</span>
+      </div>
+
+      <div class="aiscroll">
+
+        <section class="aisec" id="aiKb">
+          <div class="aigrid">
+            <div class="aicard">
+              <h4>简历原文 <span class="hint" id="aiResumeLen">0 字</span></h4>
+              <div class="airow">
+                <button class="ghost sm" id="aiUpload">上传简历（txt / docx / pdf）</button>
+                <button class="link sm" id="aiKbDir">打开知识库目录</button>
+              </div>
+              <textarea id="aiResume" rows="9" spellcheck="false" placeholder="上传简历后这里会显示解析出的文字；扫描件或旧版 .doc 解析不了时，可以直接把内容粘贴到这里"></textarea>
+            </div>
+
+            <div class="aicard">
+              <h4>结构化档案 <span class="hint">AI 回复的事实来源</span></h4>
+              <div class="aifields">
+                <label>姓名<input id="aiPName" autocomplete="off"></label>
+                <label>学历<input id="aiPDegree" placeholder="本科 / 硕士" autocomplete="off"></label>
+                <label>专业<input id="aiPMajor" autocomplete="off"></label>
+                <label>身份<input id="aiPStatus" placeholder="实习 / 应届 / 社招" autocomplete="off"></label>
+                <label>年限<input id="aiPYears" placeholder="如 1 年" autocomplete="off"></label>
+                <label>期望岗位<input id="aiPRole" autocomplete="off"></label>
+                <label class="wide">技能（用、分隔）<input id="aiPSkills" autocomplete="off"></label>
+                <label class="wide">项目经历（用；分隔）<input id="aiPProjects" autocomplete="off"></label>
+                <label class="wide">自我介绍<textarea id="aiPIntro" rows="2" spellcheck="false"></textarea></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="aigrid">
+            <div class="aicard">
+              <h4>标准问答 <span class="hint">qa.md</span><button class="link sm right" id="aiResetQa">恢复默认</button></h4>
+              <textarea id="aiQa" rows="11" spellcheck="false"></textarea>
+            </div>
+            <div class="aicard">
+              <h4>回复规则 <span class="hint">rules.md</span><button class="link sm right" id="aiResetRules">恢复默认</button></h4>
+              <textarea id="aiRules" rows="11" spellcheck="false"></textarea>
+            </div>
+          </div>
+
+          <div class="aiact">
+            <button class="primary" id="aiSaveKb">保存知识库</button>
+            <span class="hint" id="aiSaveTip"></span>
+          </div>
+        </section>
+
+        <section class="aisec hide" id="aiRun">
+          <div class="aigrid">
+            <div class="aicard">
+              <h4>模型设置 <span class="hint">Key 只存本地，不上传</span></h4>
+              <div class="aifields">
+                <label class="wide">DeepSeek API Key<input id="aiKey" type="password" placeholder="sk-…（留空表示不修改）" autocomplete="off"></label>
+                <label>接口地址<input id="aiBase" autocomplete="off"></label>
+                <label>模型<input id="aiModel" autocomplete="off"></label>
+                <label>回复字数上限<input id="aiMaxChars" type="number" min="20" max="200"></label>
+                <label>轮询间隔（秒）<input id="aiPoll" type="number" min="10" max="600"></label>
+                <label>延迟下限（秒）<input id="aiDelayMin" type="number" min="1" max="600"></label>
+                <label>延迟上限（秒）<input id="aiDelayMax" type="number" min="1" max="900"></label>
+                <label>单会话每小时上限<input id="aiMaxPerHour" type="number" min="1" max="50"></label>
+              </div>
+              <div class="airow">
+                <button class="ghost sm" id="aiTest">测试连接</button>
+                <button class="primary sm" id="aiSaveCfg">保存设置</button>
+                <span class="hint" id="aiCfgTip"></span>
+              </div>
+            </div>
+
+            <div class="aicard">
+              <h4>值守开关</h4>
+              <div class="aistatrow">
+                <b id="aiWatch">未运行</b>
+                <span id="aiWatchSub">开启后会常驻监听 BOSS 未读消息</span>
+              </div>
+              <div class="airow">
+                <button class="primary" id="aiStart">开启值守</button>
+                <button class="ghost hide" id="aiStop">停止值守</button>
+              </div>
+              <div class="airow">
+                <button class="ghost sm" id="aiScan">立即扫描一次</button>
+                <button class="ghost sm" id="aiDiag">抓取页面结构</button>
+              </div>
+              <p class="note">值守需要浏览器保持 BOSS 登录状态；和投递任务互不干扰，可以同时开着。</p>
+              <p class="note warn">自动回复违反平台用户协议，存在账号被限流或封禁的风险，请自行评估后再开启。</p>
+
+              <h3 class="sub">发送方式</h3>
+              <div class="chips" id="aiSendMode">
+                <button data-send="1" class="on">自动发送</button>
+                <button data-send="0">只生成草稿</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="aisec hide" id="aiTestSec">
+          <div class="aicard">
+            <h4>试生成一条回复 <span class="hint">只生成不发送，用来验证 AI 是否认识你</span></h4>
+            <textarea id="aiTestInput" rows="3" spellcheck="false" placeholder="贴一条 HR 可能发来的消息，例如：你好，方便说下期望薪资吗？"></textarea>
+            <div class="airow">
+              <button class="primary sm" id="aiTestRun">生成回复</button>
+              <span class="hint" id="aiTestTip"></span>
+            </div>
+            <div class="aitestout hide" id="aiTestOut"></div>
+          </div>
+        </section>
+
+        <div class="ailogbox">
+          <div class="ailoghead">智能体日志</div>
+          <div class="ailog" id="aiLogBox">
+            <div class="ailogempty" id="aiLogEmpty">开启值守或试运行后，这里会显示每一步的动作和结果</div>
+          </div>
+        </div>
+
       </div>
     </div>
 

@@ -24,9 +24,23 @@ contextBridge.exposeInMainWorld('api', {
   getTask: id => ipcRenderer.invoke('task:get', id),
   deleteTask: id => ipcRenderer.invoke('task:delete', id),
 
+  // 智能体（知识库 / AI 自动回复）
+  agentState: () => ipcRenderer.invoke('agent:state'),
+  agentKb: () => ipcRenderer.invoke('agent:kb'),
+  agentKbSave: p => ipcRenderer.invoke('agent:kbSave', p),
+  agentKbReset: k => ipcRenderer.invoke('agent:kbReset', k),
+  agentCfgSave: p => ipcRenderer.invoke('agent:cfgSave', p),
+  agentTest: () => ipcRenderer.invoke('agent:test'),
+  agentTry: t => ipcRenderer.invoke('agent:try', t),
+  agentStart: () => ipcRenderer.invoke('agent:start'),
+  agentStop: () => ipcRenderer.invoke('agent:stop'),
+  agentScan: () => ipcRenderer.invoke('agent:scan'),
+  agentDiag: () => ipcRenderer.invoke('agent:diag'),
+  agentUpload: () => ipcRenderer.invoke('agent:upload'),
+  agentOpenKbDir: () => ipcRenderer.invoke('agent:openKbDir'),
+
   // 版本更新
-  checkUpdate: () => ipcRenderer.invoke('update:check'),
-  downloadUpdate: v => ipcRenderer.invoke('update:download', v),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),  downloadUpdate: v => ipcRenderer.invoke('update:download', v),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
   showUpdateFile: () => ipcRenderer.invoke('update:openFile'),

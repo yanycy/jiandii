@@ -914,6 +914,8 @@ bridge.on('log', p => {
   else if (p.mode === 'append') appendLine(p.text);
   else if (p.mode === 'replace') { replaceLine(p.text); parseLine(p.text); }
   else { newLine(p.text); parseLine(p.text); }
+  // 智能体日志同时收进「智能体」面板，投递主流程的日志不受影响
+  if (typeof p.text === 'string' && p.text.includes('[AI]')) aiFeed(p.text);
 });
 
 bridge.on('state', s => {
@@ -1122,6 +1124,320 @@ async function checkUpdates() {
   showUpdate({ manifest: r.manifest, current: r.current });
 }
 
+/* ---------------- 智能体 ---------------- */
+const AI = { state: null, kb: null, loaded: false, sendMode: 1, busy: false };
+
+function aiStripAnsi(s) {
+  return String(s == null ? '' : s).replace(/\x1b\[[0-9;]*m/g, '').trim();
+}
+
+// 主进程日志里带 [AI] 前缀的行，单独收进智能体面板
+function aiFeed(text) {
+  const box = $('aiLogBox');
+  if (!box) return;
+  const t = aiStripAnsi(text);
+  if (!t || !t.includes('[AI]')) return;
+  const empty = $('aiLogEmpty');
+  if (empty) empty.remove();
+  const line = document.createElement('div');
+  line.className = 'alline';
+  if (/失败|出错|错误|异常/.test(t)) line.classList.add('err');
+  else if (/已回复/.test(t)) line.classList.add('ok');
+  else if (/提醒|跳过|上限|草稿/.test(t)) line.classList.add('warn');
+  line.textContent = t.replace('[AI]', '').trim();
+  box.appendChild(line);
+  while (box.children.length > 400) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+function aiSetState(st) {
+  if (!st || st.ok === false) return;
+  AI.state = st;
+  const badge = $('aiState');
+  if (st.watch && st.watch.running) {
+    badge.textContent = `值守中 · 已回 ${st.watch.stats.replied}`;
+    badge.classList.add('on');
+    badge.classList.remove('err');
+  } else if (!st.hasKey) {
+    badge.textContent = '待填 API Key';
+    badge.classList.remove('on');
+    badge.classList.add('err');
+  } else if (!st.kb.resumeLen && !st.kb.profileFilled) {
+    badge.textContent = '待建知识库';
+    badge.classList.remove('on');
+    badge.classList.add('err');
+  } else {
+    badge.textContent = '已就绪 · 未值守';
+    badge.classList.remove('on');
+    badge.classList.remove('err');
+  }
+
+  const w = $('aiWatch');
+  if (w) {
+    const running = !!(st.watch && st.watch.running);
+    w.textContent = running ? '运行中' : '未运行';
+    w.classList.toggle('on', running);
+    $('aiStart').classList.toggle('hide', running);
+    $('aiStop').classList.toggle('hide', !running);
+    const sub = $('aiWatchSub');
+    if (running) {
+      const t = st.watch.lastScan ? new Date(st.watch.lastScan).toLocaleTimeString() : '—';
+      sub.textContent = `上次扫描 ${t} · 已回 ${st.watch.stats.replied} · 跳过 ${st.watch.stats.skipped} · 失败 ${st.watch.stats.failed}`
+        + (st.watch.lastError ? ` · ${st.watch.lastError}` : '');
+    } else {
+      sub.textContent = '开启后会常驻监听 BOSS 未读消息';
+    }
+  }
+  AI.sendMode = st.autoSend ? 1 : 0;
+  const chips = $('aiSendMode');
+  if (chips) chips.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.send) === AI.sendMode));
+}
+
+function aiFillCfg(st) {
+  $('aiBase').value = st.baseUrl || 'https://api.deepseek.com';
+  $('aiModel').value = st.model || 'deepseek-v4-flash';
+  $('aiMaxChars').value = st.maxChars || 60;
+  $('aiPoll').value = st.pollSec || 20;
+  $('aiDelayMin').value = st.delayMin || 20;
+  $('aiDelayMax').value = st.delayMax || 90;
+  $('aiMaxPerHour').value = st.maxPerHour || 3;
+  $('aiKey').placeholder = st.hasKey ? `已保存 ${st.keyMask}（留空表示不修改）` : 'sk-…';
+}
+
+function aiFillKb(kb) {
+  if (!kb) return;
+  AI.kb = kb;
+  const p = kb.profile || {};
+  $('aiResume').value = kb.resume || '';
+  $('aiResumeLen').textContent = (kb.resume || '').length + ' 字';
+  $('aiPName').value = p.name || '';
+  $('aiPDegree').value = p.degree || '';
+  $('aiPMajor').value = p.major || '';
+  $('aiPStatus').value = p.status || '';
+  $('aiPYears').value = p.years || '';
+  $('aiPRole').value = p.expectRole || '';
+  $('aiPSkills').value = (p.skills || []).join('、');
+  $('aiPProjects').value = (p.projects || []).join('；');
+  $('aiPIntro').value = p.intro || '';
+  $('aiQa').value = kb.qa || '';
+  $('aiRules').value = kb.rules || '';
+}
+
+async function aiRefresh(force) {
+  try {
+    const st = await bridge.agentState();
+    if (st && st.ok !== false) aiSetState(st);
+    if (!AI.loaded || force) {
+      const kb = await bridge.agentKb();
+      if (kb && !kb.msg) aiFillKb(kb);
+      AI.loaded = true;
+    }
+    if (st && st.ok !== false && !AI.cfgFilled) {
+      aiFillCfg(st);
+      AI.cfgFilled = true;
+    }
+  } catch {}
+}
+
+async function aiSaveKb() {
+  const split = (v, re) => String(v || '').split(re).map(s => s.trim()).filter(Boolean);
+  const patch = {
+    resume: $('aiResume').value,
+    qa: $('aiQa').value,
+    rules: $('aiRules').value,
+    profile: {
+      name: $('aiPName').value.trim(),
+      degree: $('aiPDegree').value.trim(),
+      major: $('aiPMajor').value.trim(),
+      status: $('aiPStatus').value.trim(),
+      years: $('aiPYears').value.trim(),
+      expectRole: $('aiPRole').value.trim(),
+      skills: split($('aiPSkills').value, /[、,，;；\s]+/),
+      projects: split($('aiPProjects').value, /[;；\n]+/),
+      intro: $('aiPIntro').value.trim(),
+    },
+  };
+  const r = await bridge.agentKbSave(patch);
+  const tip = $('aiSaveTip');
+  if (r && r.ok) {
+    tip.textContent = '已保存到本地知识库';
+    aiFeed('[AI] 知识库已保存');
+    aiRefresh();
+  } else {
+    tip.textContent = (r && r.msg) || '保存失败';
+  }
+  setTimeout(() => { if (tip.textContent) tip.textContent = ''; }, 4000);
+}
+
+function aiBind() {
+  // 面板内三个子页
+  document.querySelectorAll('.aisub button[data-ai]').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.aisub button[data-ai]').forEach(x => x.classList.toggle('on', x === b));
+      const k = b.dataset.ai;
+      $('aiKb').classList.toggle('hide', k !== 'kb');
+      $('aiRun').classList.toggle('hide', k !== 'run');
+      $('aiTestSec').classList.toggle('hide', k !== 'test');
+    };
+  });
+
+  $('aiResume').oninput = () => { $('aiResumeLen').textContent = $('aiResume').value.length + ' 字'; };
+
+  $('aiUpload').onclick = async () => {
+    const b = $('aiUpload');
+    b.disabled = true;
+    b.textContent = '正在解析…';
+    try {
+      const r = await bridge.agentUpload();
+      if (r && r.ok) {
+        $('aiResume').value = r.text || '';
+        $('aiResumeLen').textContent = ($('aiResume').value || '').length + ' 字';
+        $('aiSaveTip').textContent = `已解析 ${r.file}${r.warn ? ' · ' + r.warn : ''}`;
+        aiFeed(`[AI] 简历已解析：${r.file}（${(r.text || '').length} 字）`);
+        aiRefresh(true);
+      } else if (!r || !r.canceled) {
+        toast((r && r.msg) || '解析失败');
+      }
+    } finally {
+      b.disabled = false;
+      b.textContent = '上传简历（txt / docx / pdf）';
+    }
+  };
+
+  $('aiKbDir').onclick = () => bridge.agentOpenKbDir();
+  $('aiSaveKb').onclick = aiSaveKb;
+  $('aiResetQa').onclick = async () => {
+    const kb = await bridge.agentKbReset('qa');
+    if (kb) { aiFillKb(kb); toast('标准问答已恢复默认'); }
+  };
+  $('aiResetRules').onclick = async () => {
+    const kb = await bridge.agentKbReset('rules');
+    if (kb) { aiFillKb(kb); toast('回复规则已恢复默认'); }
+  };
+
+  $('aiTest').onclick = async () => {
+    const b = $('aiTest');
+    b.disabled = true;
+    b.textContent = '测试中…';
+    const r = await bridge.agentTest();
+    $('aiCfgTip').textContent = (r && r.msg) || '';
+    toast((r && r.msg) || '测试结束');
+    b.disabled = false;
+    b.textContent = '测试连接';
+  };
+
+  $('aiSaveCfg').onclick = async () => {
+    const patch = {
+      apiKey: $('aiKey').value,
+      baseUrl: $('aiBase').value,
+      model: $('aiModel').value,
+      maxChars: $('aiMaxChars').value,
+      pollSec: $('aiPoll').value,
+      delayMin: $('aiDelayMin').value,
+      delayMax: $('aiDelayMax').value,
+      maxPerHour: $('aiMaxPerHour').value,
+      autoSend: AI.sendMode === 1,
+    };
+    const st = await bridge.agentCfgSave(patch);
+    if (st && st.ok !== false) {
+      $('aiKey').value = '';
+      aiSetState(st);
+      aiFillCfg(st);
+      $('aiCfgTip').textContent = '已保存';
+      toast('设置已保存');
+    } else {
+      $('aiCfgTip').textContent = (st && st.msg) || '保存失败';
+    }
+    setTimeout(() => { const e = $('aiCfgTip'); if (e) e.textContent = ''; }, 4000);
+  };
+
+  $('aiSendMode').onclick = e => {
+    const b = e.target.closest('button[data-send]');
+    if (!b) return;
+    AI.sendMode = Number(b.dataset.send);
+    $('aiSendMode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    bridge.agentCfgSave({ autoSend: AI.sendMode === 1 });
+  };
+
+  $('aiStart').onclick = async () => {
+    if (AI.busy) return;
+    AI.busy = true;
+    const b = $('aiStart');
+    b.disabled = true;
+    b.textContent = '启动中…';
+    try {
+      const r = await bridge.agentStart();
+      toast((r && r.msg) || '已开启');
+      if (!r || !r.ok) aiFeed(`[AI] 开启失败：${(r && r.msg) || '未知原因'}`);
+    } finally {
+      AI.busy = false;
+      b.disabled = false;
+      b.textContent = '开启值守';
+      aiRefresh();
+    }
+  };
+
+  $('aiStop').onclick = async () => {
+    const r = await bridge.agentStop();
+    toast((r && r.msg) || '已停止');
+    aiRefresh();
+  };
+
+  $('aiScan').onclick = async () => {
+    const b = $('aiScan');
+    b.disabled = true;
+    b.textContent = '扫描中…';
+    const r = await bridge.agentScan();
+    if (!r || !r.ok) toast((r && r.msg) || '扫描失败');
+    else toast(`未读会话 ${(r.convs || []).length} 个`);
+    b.disabled = false;
+    b.textContent = '立即扫描一次';
+    aiRefresh();
+  };
+
+  $('aiDiag').onclick = async () => {
+    const b = $('aiDiag');
+    b.disabled = true;
+    b.textContent = '抓取中…';
+    const r = await bridge.agentDiag();
+    toast(r && r.ok ? '结构已保存，见智能体日志' : ((r && r.msg) || '抓取失败'));
+    b.disabled = false;
+    b.textContent = '抓取页面结构';
+  };
+
+  $('aiTestRun').onclick = async () => {
+    const text = $('aiTestInput').value.trim();
+    if (!text) { toast('先输入一条消息'); return; }
+    const b = $('aiTestRun');
+    b.disabled = true;
+    b.textContent = '生成中…';
+    $('aiTestTip').textContent = '';
+    const r = await bridge.agentTry(text);
+    const out = $('aiTestOut');
+    if (r && r.ok) {
+      out.textContent = r.reply;
+      out.classList.remove('hide');
+      $('aiTestTip').textContent = `${r.reply.length} 字`;
+    } else {
+      out.classList.add('hide');
+      $('aiTestTip').textContent = (r && r.msg) || '生成失败';
+    }
+    b.disabled = false;
+    b.textContent = '生成回复';
+  };
+
+  // 面板可见时轻量刷新值守状态
+  setInterval(() => {
+    if ($('paneAi').classList.contains('hide')) return;
+    aiRefresh(false);
+  }, 5000);
+}
+
+async function aiInit() {
+  aiBind();
+  await aiRefresh(true);
+}
+
 async function init() {
   const st = await bridge.state();
   S.cfg = st.cfg;
@@ -1155,6 +1471,7 @@ async function init() {
 
   bind();
   bindKeywordMemory();   // 关键词边打边记，下次打开自动带出来
+  aiInit().catch(() => {});
 
   // 主进程查到新版本 / 下载进度
   bridge.on('update:available', p => showUpdate(p));
@@ -1308,9 +1625,11 @@ function bind() {
   document.querySelectorAll('.tabs button').forEach(b => {
     b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-      const isLog = b.dataset.tab === 'log';
-      $('paneLog').classList.toggle('hide', !isLog);
-      $('paneRep').classList.toggle('hide', isLog);
+      const t = b.dataset.tab;
+      $('paneLog').classList.toggle('hide', t !== 'log');
+      $('paneRep').classList.toggle('hide', t !== 'rep');
+      $('paneAi').classList.toggle('hide', t !== 'ai');
+      if (t === 'ai') aiRefresh(false);
     };
   });
 

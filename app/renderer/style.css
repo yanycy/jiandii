@@ -763,3 +763,101 @@ html[data-theme="light"] .upcard{box-shadow:0 26px 60px -28px rgba(30,48,60,.35)
   40%,60%{transform:translateX(5px)}
 }
 .upcard.shake{animation:upshake .45s ease}
+
+/* ================= 智能体 ================= */
+.aisub{
+  display:flex;align-items:center;gap:4px;
+  padding:9px 14px;border-bottom:1px solid var(--line);
+  background:var(--bg2);flex:0 0 auto;
+}
+.aisub button{
+  border:0;background:transparent;color:var(--txt3);
+  font:12px inherit;font-family:inherit;cursor:pointer;
+  padding:5px 11px;border-radius:8px;transition:.16s;
+}
+.aisub button:hover{color:var(--txt);background:var(--panel2)}
+.aisub button.on{color:var(--acc);background:var(--acc-bg)}
+.aiflex{flex:1}
+.aistate{
+  font-size:10.5px;color:var(--txt3);
+  border:1px solid var(--line);border-radius:999px;padding:2px 10px;
+}
+.aistate.on{color:var(--acc);border-color:var(--acc);background:var(--acc-bg)}
+.aistate.err{color:var(--err);border-color:var(--err);background:rgba(240,115,111,.08)}
+
+.aiscroll{
+  flex:1;overflow:auto;padding:14px;
+  display:flex;flex-direction:column;gap:12px;
+}
+.aisec{display:flex;flex-direction:column;gap:12px}
+.aigrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:1000px){.aigrid{grid-template-columns:1fr}}
+
+.aicard{
+  border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  padding:12px 13px;display:flex;flex-direction:column;gap:9px;min-width:0;
+}
+.aicard h4{
+  font-size:12px;font-weight:600;color:var(--txt);
+  display:flex;align-items:center;gap:8px;letter-spacing:.01em;
+}
+.aicard h4 .right{margin-left:auto;font-weight:500}
+.aicard h3.sub{font-size:11px;color:var(--txt2);margin-top:2px;font-weight:600}
+.aicard textarea{font-family:inherit;font-size:11.5px;line-height:1.7}
+
+.airow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.aiact{display:flex;align-items:center;gap:10px;padding-top:2px}
+.airow .primary.sm,.aiact .primary.sm,.aicard .primary.sm{
+  width:auto;height:32px;padding:0 16px;font-size:12px;border-radius:9px;
+  box-shadow:none;letter-spacing:0;
+}
+.airow .ghost.sm{
+  width:auto;height:32px;padding:0 14px;font-size:12px;border-radius:9px;
+}
+.airow .ghost.sm:hover{border-color:var(--acc);color:var(--acc);background:var(--acc-bg)}
+
+.aifields{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.aifields label{
+  display:flex;flex-direction:column;gap:4px;
+  font-size:10.5px;color:var(--txt3);min-width:0;
+}
+.aifields label.wide{grid-column:1/-1}
+.aifields input,.aifields textarea{
+  width:100%;border-radius:8px;border:1px solid var(--line);
+  background:var(--bg2);color:var(--txt);
+  padding:7px 9px;font:11.5px/1.6 inherit;font-family:inherit;
+  outline:none;transition:.16s;user-select:text;
+}
+.aifields input:focus,.aifields textarea:focus{border-color:var(--acc);box-shadow:var(--glow)}
+.aifields textarea{resize:vertical}
+
+.aistatrow{display:flex;flex-direction:column;gap:3px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+.aistatrow b{font-size:13px;color:var(--txt)}
+.aistatrow b.on{color:var(--acc)}
+.aistatrow span{font-size:10.5px;color:var(--txt3);line-height:1.5}
+
+.aitestout{
+  border:1px dashed var(--line2);border-radius:10px;background:var(--bg2);
+  padding:10px 12px;font-size:12px;line-height:1.75;color:var(--txt);
+  white-space:pre-wrap;word-break:break-word;user-select:text;
+}
+
+.ailogbox{
+  border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.ailoghead{
+  font-size:10.5px;color:var(--txt3);letter-spacing:.06em;
+  padding:7px 12px;border-bottom:1px solid var(--line);background:var(--bg2);
+}
+.ailog{
+  max-height:220px;overflow:auto;padding:8px 12px;
+  font:11px/1.85 var(--mono);color:var(--txt2);
+  display:flex;flex-direction:column;gap:1px;user-select:text;
+}
+.ailogempty{color:var(--txt3);font-family:inherit;font-size:11px}
+.ailog .alline{white-space:pre-wrap;word-break:break-word}
+.ailog .alline.ok{color:var(--ok)}
+.ailog .alline.warn{color:var(--warn)}
+.ailog .alline.err{color:var(--err)}

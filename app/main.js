@@ -659,6 +659,46 @@ ipcMain.handle('browser:close', async () => {
   }
 });
 
+// ------------------------------------------------------------------ 智能体（知识库 + AI 自动回复）
+// 逻辑全在 lib/agent.mjs（打包进 core.cjs），这里只做 IPC 转发，保持投递主链路不动
+const AGENT = core.agentApi;
+
+ipcMain.handle('agent:state', () => { try { return AGENT.state(); } catch (e) { return { ok: false, msg: e.message }; } });
+ipcMain.handle('agent:kb', () => { try { return AGENT.kbLoad(); } catch (e) { return { ok: false, msg: e.message }; } });
+ipcMain.handle('agent:kbSave', (e, patch) => { try { return AGENT.kbSave(patch || {}); } catch (err) { return { ok: false, msg: err.message }; } });
+ipcMain.handle('agent:kbReset', (e, kind) => { try { return AGENT.kbReset(kind); } catch (err) { return { ok: false, msg: err.message }; } });
+ipcMain.handle('agent:cfgSave', (e, patch) => { try { return AGENT.saveCfg(patch || {}); } catch (err) { return { ok: false, msg: err.message }; } });
+ipcMain.handle('agent:test', () => AGENT.test());
+ipcMain.handle('agent:try', (e, text) => AGENT.tryReply(text));
+ipcMain.handle('agent:start', async () => { try { return await AGENT.start(); } catch (e) { return { ok: false, msg: e.message }; } });
+ipcMain.handle('agent:stop', () => { try { return AGENT.stop(); } catch (e) { return { ok: false, msg: e.message }; } });
+ipcMain.handle('agent:scan', () => AGENT.scanOnce());
+ipcMain.handle('agent:diag', () => AGENT.diag());
+ipcMain.handle('agent:openKbDir', () => {
+  try { shell.openPath(AGENT.state().kbDir); } catch {}
+  return true;
+});
+
+// 选一份简历解析成文本，顺手写进知识库（扫描件/旧版 doc 会明确提示改粘贴）
+ipcMain.handle('agent:upload', async () => {
+  const r = await dialog.showOpenDialog(win || undefined, {
+    title: '选择简历文件',
+    filters: [
+      { name: '简历文件', extensions: ['txt', 'md', 'docx', 'pdf'] },
+      { name: '全部文件', extensions: ['*'] },
+    ],
+    properties: ['openFile'],
+  });
+  if (r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true };
+  const file = r.filePaths[0];
+  let p;
+  try { p = AGENT.parseResume(file); } catch (e) { return { ok: false, msg: e.message }; }
+  if (!p || !p.ok) return { ok: false, msg: (p && p.msg) || '解析失败' };
+  try { AGENT.kbSave({ resume: p.text }); } catch {}
+  emit('log', { mode: 'line', text: `\u001b[36m  · 简历已解析：${path.basename(file)}（${p.text.length} 字）\u001b[0m` });
+  return { ok: true, text: p.text, warn: p.warn || '', file: path.basename(file) };
+});
+
 // ------------------------------------------------------------------ 生命周期
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -678,5 +718,9 @@ if (!gotLock) {
     scheduleUpdateChecks();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('window-all-closed', () => {
+    // 值守是常驻循环，窗口关了必须一起停，否则后台还在往 BOSS 发消息
+    try { AGENT.stop(); } catch {}
+    if (process.platform !== 'darwin') app.quit();
+  });
 }
