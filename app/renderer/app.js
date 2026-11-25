@@ -1300,7 +1300,7 @@ function aiBind() {
       }
     } finally {
       b.disabled = false;
-      b.textContent = '上传简历（txt / docx / pdf）';
+      b.textContent = '上传简历（PDF / Word）';
     }
   };
 
