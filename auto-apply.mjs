@@ -949,17 +949,45 @@ function seedPool(pool, seed) {
 
 // ------------------------------------------------------------------ BOSS
 const BOSS_SEL_JS = `(()=>{
-  const as=[...document.querySelectorAll('a[href*="/job_detail/"]')];
+  const all=[...document.querySelectorAll('a[href*="/job_detail/"]')];
+  const stat={anchors:all.length,offList:0,badHref:0,dup:0};
+  // 只在「岗位链接最多的那个列表」里采集：结果列表是 ul.rec-job-list，
+  // 详情面板里的「相似职位 / 热门职位」也在同一页面，按类名排除会误伤（列表本身就叫 rec-*），
+  // 所以改成「按数量挑出主列表」，把面板里的推荐块留在外面
+  const groups=new Map();
+  for(const a of all){
+    const box=a.closest('ul,ol,[class*="job-list"]')||document.body;
+    groups.set(box,(groups.get(box)||0)+1);
+  }
+  let scope=null,best=0;
+  for(const [el,n] of groups) if(n>best){ best=n; scope=el; }
+  if(!scope||best<3) scope=document.body;
+
   const seen=new Set(); const out=[];
-  for(const a of as){
+  for(const a of all){
+    if(!scope.contains(a)){ stat.offList++; continue; }
     const h=a.getAttribute('href')||'';
-    const m=h.match(/job_detail\\/([a-zA-Z0-9]+)\\.html/); if(!m) continue;
-    const id=m[1]; if(seen.has(id)) continue; seen.add(id);
+    // BOSS 岗位 ID 现在带 - 和 ~（如 e0679...t-_FltY），旧的 [a-zA-Z0-9]+ 会把这类直接丢掉
+    const m=h.match(/job_detail\\/([^/?#]+)/);
+    let id=m?m[1].replace(/\\.html$/,''):'';
+    if(!id||id.length<6){ stat.badHref++; continue; }
+    if(seen.has(id)){ stat.dup++; continue; } seen.add(id);
     let p=a; for(let i=0;i<4;i++) if(p.parentElement) p=p.parentElement;
     const lines=(p.innerText||'').split('\\n').map(s=>s.trim()).filter(Boolean);
     out.push({id,lines:lines.slice(0,9)});
   }
-  return JSON.stringify(out);})()`;
+  return JSON.stringify({items:out,stat});})()`;
+
+// 等页面出结果用：只数「主列表」里的岗位链接，避免把页脚/详情面板的链接当成"已加载"
+const BOSS_N_JS = `(()=>{
+  const all=[...document.querySelectorAll('a[href*="/job_detail/"]')];
+  const groups=new Map();
+  for(const a of all){
+    const box=a.closest('ul,ol,[class*="job-list"]')||document.body;
+    groups.set(box,(groups.get(box)||0)+1);
+  }
+  let best=0; for(const n of groups.values()) if(n>best) best=n;
+  return best;})()`;
 
 const dec = s => [...s].map(c => {
   const cp = c.codePointAt(0);
@@ -984,8 +1012,11 @@ function parseBossCard(x) {
   return { id: x.id, title, sal, exp, edu, co, area, isIntern };
 }
 
-const GOOD = /前端|全栈|Web|web|Vue|小程序|Java|Python|开发|研发|软件|实施|交付|技术支持|技术工程师|运维|系统集成|数据|AI|人工智能|IT|计算机|产品助理|程序员|FDE|解决方案/;
-const BAD = /销售|行政|人事|人力资源|财务|会计|文员|录入|设计实习|美工|剪辑|短视频|短剧|主播|客服|话务|教师|讲师|助教|培训|造价|资料员|跟单|采购|仓管|物流|司机|保安|保洁|护士|医药|法务|律师|操盘|交易员|信贷|理财|保险|柜员|游戏测试|电脑维修|维修师傅|维修技术|美容|餐饮|导购|店长|储备干部|外呼|电销|编剧|运营助理|数据运营|充电桩|储能|档案|标注|数据采集|纯文字沟通|小白|普工|临时工|打包员/;
+// 方向词表：从「关键词 + 期望工作方向」推导，命中才算这个方向内的岗位。
+// 原来的 GOOD 只有通用词，导致「测试工程师 / 项目经理 / .NET / java(小写)」这类明显相关的岗位被误杀，
+// 而「水气环境监测设备运维」这种只因含「运维」被放行 —— 所以现在关键词优先，词表只做兜底。
+const GOOD = /前端|后端|全栈|Web|web|Vue|React|Node|小程序|H5|Java|java|Python|Golang|\.NET|dotnet|C\+\+|C#|开发|研发|软件|实施|交付|技术支持|技术工程师|技术支持工程师|测试工程师|自动化测试|运维|系统集成|系统|数据|大数据|AI|人工智能|算法|爬虫|IT|计算机|信息|产品助理|项目助理|项目经理|项目专员|程序员|网络安全|信息安全|FDE|解决方案|售前|驻场|客户成功|低代码|数字化|信息化/i;
+const BAD = /销售|行政|人事|人力资源|财务|会计|文员|录入|设计实习|美工|剪辑|短视频|短剧|主播|客服|话务|教师|讲师|助教|老师|培训|造价|资料员|跟单|采购|仓管|物流|司机|保安|保洁|护士|医药|药学|药代|临床|法务|律师|操盘|交易员|信贷|理财|保险|柜员|游戏测试|电脑维修|维修师傅|维修技术|维修|电工|焊工|数控|模具|美容|美发|餐饮|厨师|导购|店长|收银|储备干部|外呼|电销|编剧|运营助理|数据运营|充电桩|储能|档案|标注|数据采集|纯文字沟通|小白|普工|临时工|打包员|分拣|质检|测量|施工|土木|建筑|装饰|景观|制版|服装|幼教|保育|社工|针灸|推拿|中医|护理|教练|助教|顾问|外贸|报关|翻译|银行|证券|审计|税务|资产评估|商务助理|业务助理|客服专员|运营专员|新媒体|直播|摄影|后期|动画|原画|建模|室内设计|平面设计|视觉设计|工业设计|ui设计|ui设计师|ue设计|交互设计|管培生/i;
 const CITYRE = /(南宁|柳州|桂林|北海|玉林|梧州|钦州|贵港|百色|河池|来宾|崇左|贺州|防城港|北京|上海|广州|深圳|杭州|成都|南京|武汉|西安|苏州|厦门|长沙|重庆|天津|合肥|郑州|青岛|大连|福州|无锡|东莞|佛山|宁波|济南|珠海|南昌)/;
 // BOSS 卡片的字段识别（卡片文字顺序不稳定，按特征匹配比按下标取稳）
 const BOSS_EDU_RE = /^(大专|本科|硕士|博士|中专\/中技|中专|高中|初中及以下|学历不限|不限)$/;
@@ -1002,6 +1033,21 @@ function scoreBoss(r) {
   if (/AI|人工智能|大数据/.test(r.title)) s += 10;
   if (/开发|研发|软件|程序员|FDE|解决方案/.test(r.title)) s += 8;
   return s;
+}
+
+/** 方向判定：先认「我搜的词」，再用方向词表兜底，最后才用无关词表排除 */
+function bossDirFilter(cfg) {
+  const kws = [...new Set((cfg.bossKeywords || [])
+    .map(s => String(s || '').trim().toLowerCase())
+    .filter(s => s.length >= 2))];
+  return title => {
+    const t = String(title || '');
+    const tl = t.toLowerCase();
+    // 标题里直接出现搜索词（前端开发 / Vue / 实施 / 售前 / FDE…）→ 就是我想要的方向
+    if (kws.some(k => tl.includes(k))) return true;
+    if (BAD.test(t)) return false;
+    return GOOD.test(t);
+  };
 }
 
 // ------------------------------------------------------------------ BOSS 求职类型
@@ -1068,12 +1114,13 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
     const kw = cfg.bossKeywords[i];
     logPart(C.d(`  [${i + 1}/${cfg.bossKeywords.length}] 采集「${kw}」... `));
     let arr = [];
+    let selStat = null;
     try {
       await cdp.goto(bossSearchUrl(kw, cityObj.code, typeKey), 1500);
       let n = 0;
       for (let k = 0; k < 12; k++) {
         await sleep(1000);
-        try { n = (await cdp.eval(`document.querySelectorAll('a[href*="/job_detail/"]').length`)) || 0; } catch { n = 0; }
+        try { n = (await cdp.eval(BOSS_N_JS)) || 0; } catch { n = 0; }
         if (n > 2) break;
       }
       // 登录状态失效时 BOSS 会整页跳登录页：停下等用户登录，登录完自动重采本关键词
@@ -1084,7 +1131,7 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
         n = 0;
         for (let k = 0; k < 12; k++) {
           await sleep(1000);
-          try { n = (await cdp.eval(`document.querySelectorAll('a[href*="/job_detail/"]').length`)) || 0; } catch { n = 0; }
+          try { n = (await cdp.eval(BOSS_N_JS)) || 0; } catch { n = 0; }
           if (n > 2) break;
         }
       }
@@ -1095,7 +1142,10 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
         await cdp.eval('window.scrollTo(0,0)');
         await sleep(600);
       } catch {}
-      arr = JSON.parse((await cdp.eval(BOSS_SEL_JS)) || '[]');
+      const raw = JSON.parse((await cdp.eval(BOSS_SEL_JS)) || '{}');
+      // 兼容老格式（纯数组）
+      arr = Array.isArray(raw) ? raw : (raw.items || []);
+      selStat = Array.isArray(raw) ? null : (raw.stat || null);
     } catch (e) {
       log(C.y('页面异常，跳过（' + e.message.slice(0, 30) + '）'));
       await sleep(1200);
@@ -1104,9 +1154,11 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
     let add = 0;
     for (const x of arr) {
       const r = parseBossCard({ ...x, id: x.id });
-      if (!pool.has(r.id)) { r.city = cityObj.name; pool.set(r.id, r); add++; }
+      if (!pool.has(r.id)) { r.city = cityObj.name; r.kw = kw; pool.set(r.id, r); add++; }
     }
-    log(C.d(`${arr.length} 条，新增 ${add}，累计 ${pool.size}`));
+    // 把「页面有多少 → 采到多少 → 为什么少」写进日志，避免静默丢数据
+    const why = selStat ? `（推荐位 ${selStat.offList} / 无 ID ${selStat.badHref} / 重复 ${selStat.dup}）` : '';
+    log(C.d(`${arr.length} 条，新增 ${add}，累计 ${pool.size}${why}`));
     taskPool(pool);
     await sleep(600);
   }
@@ -1123,8 +1175,9 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
   // 2) 筛选
   const poolArr = [...pool.values()];
   const internCnt = poolArr.filter(r => r.isIntern).length;
+  const dirOk = bossDirFilter(cfg);
   const picked = poolArr.filter(r => {
-    if (BAD.test(r.title) || !GOOD.test(r.title)) return false;
+    if (!dirOk(r.title)) return false;
     if (typeKey === 'intern') return r.isIntern;        // 只要实习（页面已按 jobType=1902 筛过，这里兜底）
     if (typeKey === 'fulltime') return !r.isIntern;     // 全职：排除实习卡
     if (typeKey === 'parttime') return true;            // 兼职由页面筛，本地不再区分
@@ -1132,7 +1185,7 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
   }).map(r => ({ ...r, score: scoreBoss(r) })).sort((a, b) => b.score - a.score);
 
   log('');
-  ok(`池 ${pool.size}（实习 ${internCnt}）→ 符合条件 ${picked.length}`);
+  ok(`池 ${pool.size}（实习 ${internCnt}）→ 符合条件 ${picked.length}${pool.size > picked.length ? `，方向不符 ${pool.size - picked.length}` : ''}`);
   if (!picked.length) {
     if (typeKey === 'intern') {
       warn(`「${cityObj.name}」这些关键词下没搜到实习岗（本轮 ${pool.size} 条里实习 ${internCnt} 条）`);
