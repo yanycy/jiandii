@@ -37,3 +37,5 @@ npm-debug.log*
 # 本地构建目录 / 产物
 _build/
 投递工具/
+.workbuddy/
+_eb_dist/

@@ -1047,37 +1047,78 @@ function extractJsonLoose(text) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-/** 判定一批岗位，返回与 batch 同序的 [{ok, why}]；解析不出来就返回 null（调用方放行） */
+/** 判定一批岗位，返回与 batch 同序的 [{ok, why}]；解析不出来就返回 null（调用方兜底） */
 async function aiJudgeBatch(keywords, batch) {
   const list = batch.map((r, i) => `${i}. ${r.title}｜${r.co || '公司未知'}｜${r.sal || ''}｜${r.exp || ''} ${r.edu || ''}`.replace(/\s+/g, ' ')).join('\n');
   const sys = [
-    '你是招聘岗位的相关性判定器。用户输入的检索关键词代表他要找的行业或职能方向。',
-    '判定标准：岗位属于关键词所指的同一行业、或与该方向相近的职能，就判为相关；跨行业才判为不相关。',
-    '示例一：关键词「web开发」→ 计算机 / 软件 / 互联网行业的所有岗位都算相关（前端、后端、测试、实施、运维、技术支持、产品助理等）。',
-    '示例二：关键词「幼儿教师」→ 幼儿教育 / 学前教育行业的所有岗位都算相关（幼师、保育员、早教、课程顾问等）。',
-    '偏向放宽，不要错杀：只要岗位名称或公司业务与该行业沾边，就判 1。',
+    '你是招聘岗位的相关性判定器。用户输入的检索关键词代表他要找的职能方向。',
+    '判定看「职能」而不是「公司行业」：公司是互联网/科技公司，但岗位是销售、客服、运营、编辑、行政、人事、财务、平面设计，也判 0。',
+    '示例一：关键词「web开发 / 前端 / 实施 / 技术支持」→ 相关的是技术类岗位：前端、后端、测试、实施、交付、技术支持、售前、解决方案、运维、数据、算法、产品（技术类）。',
+    '示例二：关键词「幼儿教师」→ 相关的是幼教、保育、早教、课程顾问；同园区的保安、财务判 0。',
+    '明显跨行业的一律判 0：幼教、医护、审计财务、法务、土建造价、物流快递、餐饮零售、消防安保、音乐美术、农业、制造产线等。',
+    '同一技术方向内的不同职能要放宽（开发↔实施↔技术支持↔测试都算相关），不要错杀。',
     '只输出 JSON，不要任何解释。格式：{"r":[{"i":0,"v":1,"why":"十个字内理由"}]}',
   ].join('\n');
   const usr = `关键词：${keywords.join(' / ')}\n\n待判定岗位：\n${list}\n\n逐条给结论：v=1 相关，v=0 不相关。必须覆盖上面每一条的 i。`;
+  // 关掉推理：判定不需要思考链，开着会把 max_tokens 全吃在 reasoning 上，正文变空
   const resp = await Agt.llmChat([
     { role: 'system', content: sys },
     { role: 'user', content: usr },
-  ], { temperature: 0, maxTokens: 1200 });
-  // llmChat 返回 { content, usage, model }，别直接当字符串用
+  ], { temperature: 0, maxTokens: 2400, noThink: true });
   const out = resp && typeof resp === 'object' ? resp.content : resp;
   const j = extractJsonLoose(out);
   if (!j || !Array.isArray(j.r)) return null;
+  // 输出被截断时 JSON 也解不出来，这里再兜一层：只认解析到的部分，缺的条目不判（调用方按本地规则兜底）
   const map = new Map();
   for (const it of j.r) {
     const i = Number(it && it.i);
     if (!Number.isFinite(i) || i < 0 || i >= batch.length) continue;
     map.set(i, { ok: Number(it.v) === 1, why: String(it.why || '').slice(0, 20) });
   }
-  if (map.size < batch.length) return null;   // 覆盖不全就当这批没判出来
+  if (map.size < batch.length) return null;
   return batch.map((_, i) => map.get(i));
 }
 
-/** 用大模型做方向过滤：返回保留的岗位；模型不可用 / 判定失败时整体放行，绝不静默丢弃 */
+/** 判定一批，失败就重试一次，还不行就拆半再判；整批彻底判不出来才返回 null */
+async function aiJudgeRobust(keywords, batch, quiet = false) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const v = await aiJudgeBatch(keywords, batch);
+      if (v) return v;
+      lastErr = new Error('返回格式不对（JSON 解析失败或条目不齐）');
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (batch.length > 8) {
+    const half = Math.ceil(batch.length / 2);
+    const a = await aiJudgeRobust(keywords, batch.slice(0, half), quiet);
+    const b = await aiJudgeRobust(keywords, batch.slice(half), quiet);
+    if (a && b) return [...a, ...b];
+  }
+  if (!quiet && lastErr) warn(`这一批判定失败：${lastErr.message}`);
+  return null;
+}
+
+// 本地兜底：模型不可用/判定失败时用规则收一遍，避免「不相关的一律放行」
+// 分三层：技术职能词 > 技术行业词 > 明确的非技术职能（后者优先排除，防止「软件销售」因含“软件”被放行）
+const FK_FUNC = /前端|后端|全栈|开发|研发|程序员|测试工程师|软件测试|实施|交付|技术支持|售后技术|运维|系统集成|解决方案|售前|fde|产品助理|产品经理|数据分析|数据开发|数据处理|数据标注|算法|嵌入式|网络工程|数通/i;
+const FK_TECH = /web|vue|react|angular|小程序|公众号|java|python|golang|node|php|\.net|c\+\+|c#|android|ios|软件|计算机|信息化|数字化|电子|通信|人工智能|ai\b|it\b/i;
+const FK_OUT = /幼儿园|保育|幼教|早教|托育|学前教育|小学|中学|高中|教师|讲师|助教|音乐|舞蹈|美术|架子鼓|钢琴|声乐|书法|中医|针灸|推拿|医师|护士|护理|药师|药学|医药|临床|检验|口腔|兽医|审计|会计|财务|出纳|税务|法务|律师|造价|土建|施工|监理|资料员|制版|服装|裁剪|快递|骑手|配送|司机|仓管|物流|保安|保洁|消防|物业|餐饮|厨师|服务员|导购|店长|收银|主播|剪辑|摄影|编导|新媒体|销售|电销|客服|话务|中介|房产|保险|信贷|理财|行政|人事|文员|前台|社工|储备干部|管培生|实习生储备|普工|操作工|打包|分拣|运营|编辑|文案|策划|美工|设计/;
+
+function localKeepByRule(it, keywords) {
+  const title = String(it.title || '');
+  const all = (title + ' ' + String(it.co || '')).toLowerCase();
+  // 1) 标题里直接有你搜的词，一定保留
+  if (keywords.some(k => { const kl = String(k || '').toLowerCase().trim(); return kl.length >= 2 && all.includes(kl); })) return true;
+  // 2) 明确的非技术职能：即便公司是科技公司（如「软件销售」）也排除
+  if (FK_OUT.test(title) && !FK_FUNC.test(title)) return false;
+  // 3) 技术职能 / 技术行业词
+  return FK_FUNC.test(title) || FK_TECH.test(title);
+}
+
+/** 用大模型做方向过滤：返回保留的岗位；模型不可用时用本地规则兜底，绝不整批放行 */
 async function aiFilterJobs(cfg, items) {
   const keywords = [...new Set((cfg.keywords || cfg.bossKeywords || [])
     .map(s => String(s || '').trim()).filter(Boolean))];
@@ -1085,25 +1126,27 @@ async function aiFilterJobs(cfg, items) {
 
   try {
     if (!Agt.agentState().hasKey) {
-      warn('AI 过滤已开启，但还没填 API Key（设置 → API Key）：本轮不筛选，全部岗位照常投递');
-      return items;
+      warn('AI 过滤已开启，但还没填 API Key（设置 → API Key）：本轮改用本地规则筛选');
+      return items.filter(it => localKeepByRule(it, keywords));
     }
   } catch {}
 
   const keep = [];
   const drop = [];
+  let aiFailBatches = 0;
   for (let i = 0; i < items.length; i += AI_JUDGE_CHUNK) {
     const batch = items.slice(i, i + AI_JUDGE_CHUNK);
     logPart(C.d(`  AI 判定 ${i + 1}-${i + batch.length}/${items.length} ... `));
-    let verdicts = null;
-    try {
-      verdicts = await aiJudgeBatch(keywords, batch);
-    } catch (e) {
-      warn(`调用模型失败：${e.message}（本批 ${batch.length} 个全部放行）`);
-    }
+    const verdicts = await aiJudgeRobust(keywords, batch);
     if (!verdicts) {
-      keep.push(...batch);
-      log(C.d('放行'));
+      // 判不出来也不放行：用本地规则兜一遍，宁可少投也不乱投
+      aiFailBatches++;
+      let k = 0;
+      for (const it of batch) {
+        if (localKeepByRule(it, keywords)) { keep.push(it); k++; }
+        else drop.push({ ...it, why: '模型未判定，本地规则判为跨行业' });
+      }
+      log(C.y(`模型未判定 → 本地规则保留 ${k}/${batch.length}`));
       continue;
     }
     batch.forEach((it, idx) => {
@@ -1115,9 +1158,11 @@ async function aiFilterJobs(cfg, items) {
     log(C.d(`保留 ${keep.length} / 剔除 ${drop.length}`));
   }
 
+  if (aiFailBatches) warn(`有 ${aiFailBatches} 批模型没判出来，已用本地规则兜底（可在设置里做一次模型连通测试）`);
+
   if (drop.length) {
     log('');
-    info(`AI 判为不相关的 ${drop.length} 个（示例）：`);
+    info(`判为不相关的 ${drop.length} 个（示例）：`);
     for (const d of drop.slice(0, 8)) {
       log(C.d(`    ✕ ${d.title}｜${d.co || ''}${d.why ? '｜' + d.why : ''}`));
     }
@@ -1235,7 +1280,13 @@ async function runBoss(cdp, cityObj, cfg, _retry = 0, seed = null) {
     }
     // 把「页面有多少 → 采到多少 → 为什么少」写进日志，避免静默丢数据
     const why = selStat ? `（推荐位 ${selStat.offList} / 无 ID ${selStat.badHref} / 重复 ${selStat.dup}）` : '';
+    // 关键词相关度：BOSS 在「小城市 + 实习」结果不足时，会把全城推荐位塞进同一个列表，
+    // 这时列表里的岗位和关键词毫无关系，需要提前告诉用户，否则会误以为是程序采错了
+    const relCnt = arr.filter(x => localKeepByRule({ title: x.lines[0] || '' }, [kw])).length;
     log(C.d(`${arr.length} 条，新增 ${add}，累计 ${pool.size}${why}`));
+    if (arr.length >= 5 && relCnt / arr.length < 0.34) {
+      warn(`「${kw}」只有 ${relCnt}/${arr.length} 条与方向相关：BOSS 在该城市这类实习太少，返回的是全城推荐位` + '（可换「XX实习」类关键词，或把城市放宽）');
+    }
     taskPool(pool);
     await sleep(600);
   }
@@ -3116,7 +3167,7 @@ export {
 };
 
 // 仅用于自动化测试：登录判定与跨标签页同步
-export const __test = { loginPending, captchaPending, waitForLogin, loggedInElsewhere, resyncWorkPage, LOGIN_JS, OTHER_TAB_JS, findBrowser, browserCandidates, chromeRunning, startChrome, zhApplyByDetail, zhApplyOne, aiJudgeBatch, aiFilterJobs, extractJsonLoose };
+export const __test = { localKeepByRule, aiJudgeRobust, loginPending, captchaPending, waitForLogin, loggedInElsewhere, resyncWorkPage, LOGIN_JS, OTHER_TAB_JS, findBrowser, browserCandidates, chromeRunning, startChrome, zhApplyByDetail, zhApplyOne, aiJudgeBatch, aiFilterJobs, extractJsonLoose };
 
 // ------------------------------------------------------------------ 智能体
 // 复用同一个数据目录、日志管道和浏览器调试连接，不额外起进程、不碰投递主链路
