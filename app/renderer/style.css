@@ -786,17 +786,37 @@ html[data-theme="light"] .upcard{box-shadow:0 26px 60px -28px rgba(30,48,60,.35)
 .aistate.err{color:var(--err);border-color:var(--err);background:rgba(240,115,111,.08)}
 
 .aiscroll{
-  flex:1;overflow:auto;padding:14px;
+  flex:1;min-height:0;overflow:auto;padding:14px;
   display:flex;flex-direction:column;gap:12px;
 }
 .aisec{display:flex;flex-direction:column;gap:12px}
-.aigrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media (max-width:1000px){.aigrid{grid-template-columns:1fr}}
+/* 自适应：窗口宽就两列、窄就一列；同一行的卡片拉齐高度，避免露出大块空白 */
+.aigrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
+  gap:12px;align-items:stretch;
+}
+@media (max-width:700px){.aigrid{grid-template-columns:1fr}}
+#aiResume{flex:1 1 auto;min-height:220px}
 
 .aicard{
   border:1px solid var(--line);border-radius:12px;background:var(--panel);
   padding:12px 13px;display:flex;flex-direction:column;gap:9px;min-width:0;
+  transition:border-color .16s;
 }
+.aicard:hover{border-color:rgba(120,170,255,.18)}
+.aicard>h4{cursor:pointer;user-select:none}
+.aicard>h4 .fold{
+  margin-left:6px;color:var(--txt3);font-size:11px;line-height:1;
+  width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:5px;transition:.16s;flex:0 0 auto;
+}
+.aicard>h4:hover .fold{color:var(--txt);background:var(--panel2)}
+/* 收起来的卡片不要跟着行高被拉长，否则会留下一大块空框 */
+.aicard.collapsed{align-self:start}
+.aicard.collapsed{padding-bottom:10px}
+.aicard.collapsed>:not(h4){display:none}
+.aicard textarea{resize:vertical;min-height:64px}
 .aicard h4{
   font-size:12px;font-weight:600;color:var(--txt);
   display:flex;align-items:center;gap:8px;letter-spacing:.01em;

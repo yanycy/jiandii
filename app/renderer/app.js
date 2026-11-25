@@ -1204,21 +1204,26 @@ function aiFillCfg(st) {
   $('aiKey').placeholder = st.hasKey ? `已保存 ${st.keyMask}（留空表示不修改）` : 'sk-…';
 }
 
-function aiFillKb(kb) {
-  if (!kb) return;
-  AI.kb = kb;
-  const p = kb.profile || {};
-  $('aiResume').value = kb.resume || '';
-  $('aiResumeLen').textContent = (kb.resume || '').length + ' 字';
+function aiFillProfile(p) {
+  p = p || {};
   $('aiPName').value = p.name || '';
   $('aiPDegree').value = p.degree || '';
   $('aiPMajor').value = p.major || '';
   $('aiPStatus').value = p.status || '';
   $('aiPYears').value = p.years || '';
   $('aiPRole').value = p.expectRole || '';
+  $('aiPCity').value = p.expectCity || '';
   $('aiPSkills').value = (p.skills || []).join('、');
   $('aiPProjects').value = (p.projects || []).join('；');
   $('aiPIntro').value = p.intro || '';
+}
+
+function aiFillKb(kb) {
+  if (!kb) return;
+  AI.kb = kb;
+  $('aiResume').value = kb.resume || '';
+  $('aiResumeLen').textContent = (kb.resume || '').length + ' 字';
+  aiFillProfile(kb.profile);
   $('aiQa').value = kb.qa || '';
   $('aiRules').value = kb.rules || '';
 }
@@ -1252,6 +1257,7 @@ async function aiSaveKb() {
       status: $('aiPStatus').value.trim(),
       years: $('aiPYears').value.trim(),
       expectRole: $('aiPRole').value.trim(),
+      expectCity: $('aiPCity').value.trim(),
       skills: split($('aiPSkills').value, /[、,，;；\s]+/),
       projects: split($('aiPProjects').value, /[;；\n]+/),
       intro: $('aiPIntro').value.trim(),
@@ -1292,8 +1298,12 @@ function aiBind() {
       if (r && r.ok) {
         $('aiResume').value = r.text || '';
         $('aiResumeLen').textContent = ($('aiResume').value || '').length + ' 字';
-        $('aiSaveTip').textContent = `已解析 ${r.file}${r.warn ? ' · ' + r.warn : ''}`;
-        aiFeed(`[AI] 简历已解析：${r.file}（${(r.text || '').length} 字）`);
+        const by = r.profileSource === 'ai' ? 'AI 抽取' : '本地规则';
+        if (r.profile) aiFillProfile(r.profile);
+        $('aiSaveTip').textContent = r.profile
+          ? `已解析 ${r.file} · 档案已按${by}自动填好，核对后点「保存知识库」`
+          : `已解析 ${r.file}${r.warn ? ' · ' + r.warn : ''}`;
+        aiFeed(`[AI] 简历已解析：${r.file}（${(r.text || '').length} 字）${r.profile ? '，档案已自动填写' : ''}`);
         aiRefresh(true);
       } else if (!r || !r.canceled) {
         toast((r && r.msg) || '解析失败');
@@ -1435,7 +1445,28 @@ function aiBind() {
 
 async function aiInit() {
   aiBind();
+  aiInitFold();
   await aiRefresh(true);
+}
+
+// 每个卡片标题都可以点一下收起/展开，状态记在本地，下次打开还是收起的
+function aiInitFold() {
+  document.querySelectorAll('#paneAi .aicard').forEach(card => {
+    const h = card.querySelector('h4');
+    if (!h || h.querySelector('.fold')) return;
+    const key = 'jd.fold.' + (h.textContent || '').trim().slice(0, 16);
+    const btn = document.createElement('span');
+    btn.className = 'fold';
+    btn.textContent = '▾';
+    h.appendChild(btn);
+    if (localStorage.getItem(key) === '1') { card.classList.add('collapsed'); btn.textContent = '▸'; }
+    h.addEventListener('click', ev => {
+      if (ev.target.closest('button,input,a,.right')) return;
+      const col = card.classList.toggle('collapsed');
+      btn.textContent = col ? '▸' : '▾';
+      try { localStorage.setItem(key, col ? '1' : '0'); } catch {}
+    });
+  });
 }
 
 async function init() {

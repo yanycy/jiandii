@@ -2989,6 +2989,7 @@ export const agentApi = {
   kbSave: Agt.kbSave,
   kbReset: Agt.kbReset,
   parseResume: Agt.parseResumeFile,
+  profileFromResume: Agt.profileFromResume,
   test: Agt.agentTest,
   tryReply: Agt.agentTryReply,
   start: Agt.agentStart,

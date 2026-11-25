@@ -696,7 +696,17 @@ ipcMain.handle('agent:upload', async () => {
   if (!p || !p.ok) return { ok: false, msg: (p && p.msg) || '解析失败' };
   try { AGENT.kbSave({ resume: p.text }); } catch {}
   emit('log', { mode: 'line', text: `\u001b[36m  · 简历已解析：${path.basename(file)}（${p.text.length} 字）\u001b[0m` });
-  return { ok: true, text: p.text, warn: p.warn || '', file: path.basename(file) };
+
+  // 解析完立刻把能确定的信息填进结构化档案，省得再手抄一遍
+  let profile = null, profileSource = '';
+  try {
+    const f = await AGENT.profileFromResume(p.text);
+    if (f && f.ok) { profile = f.profile; profileSource = f.source || ''; }
+  } catch (e) {
+    emit('log', { mode: 'line', text: `\u001b[33m  · 自动建档没成功：${e.message}\u001b[0m` });
+  }
+
+  return { ok: true, text: p.text, warn: p.warn || '', file: path.basename(file), profile, profileSource };
 });
 
 // ------------------------------------------------------------------ 生命周期

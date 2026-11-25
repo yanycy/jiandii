@@ -262,10 +262,11 @@
                 <label>专业<input id="aiPMajor" autocomplete="off"></label>
                 <label>身份<input id="aiPStatus" placeholder="实习 / 应届 / 社招" autocomplete="off"></label>
                 <label>年限<input id="aiPYears" placeholder="如 1 年" autocomplete="off"></label>
-                <label>期望岗位<input id="aiPRole" autocomplete="off"></label>
-                <label class="wide">技能（用、分隔）<input id="aiPSkills" autocomplete="off"></label>
-                <label class="wide">项目经历（用；分隔）<input id="aiPProjects" autocomplete="off"></label>
-                <label class="wide">自我介绍<textarea id="aiPIntro" rows="2" spellcheck="false"></textarea></label>
+                <label>期望城市<input id="aiPCity" placeholder="如 南宁 / 深圳" autocomplete="off"></label>
+                <label class="wide">期望工作方向<input id="aiPRole" placeholder="可投多个方向，用 / 分隔，例如：Web前端 / 实施工程师 / 技术支持" autocomplete="off"></label>
+                <label class="wide">技能（用、分隔）<textarea id="aiPSkills" rows="2" spellcheck="false"></textarea></label>
+                <label class="wide">项目经历（用；分隔）<textarea id="aiPProjects" rows="4" spellcheck="false"></textarea></label>
+                <label class="wide">自我介绍<textarea id="aiPIntro" rows="3" spellcheck="false"></textarea></label>
               </div>
             </div>
           </div>
@@ -290,7 +291,7 @@
         <section class="aisec hide" id="aiRun">
           <div class="aigrid">
             <div class="aicard">
-              <h4>模型设置 <span class="hint">Key 只存本地，不上传</span></h4>
+              <h4>模型设置 <span class="hint">Key 存在用户目录，覆盖更新也不会丢</span></h4>
               <div class="aifields">
                 <label class="wide">DeepSeek API Key<input id="aiKey" type="password" placeholder="sk-…（留空表示不修改）" autocomplete="off"></label>
                 <label>接口地址<input id="aiBase" autocomplete="off"></label>
