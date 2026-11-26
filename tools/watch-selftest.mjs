@@ -53,5 +53,30 @@ if (which === 'read') {
   console.log(JSON.stringify(cur, null, 1).slice(0, 3500));
 }
 
+// 只生成草稿，绝不发送：验证「历史简历卡片不会吞掉普通回复」
+if (which === 'draft') {
+  const name = process.argv[3] || '韦女士';
+  Agt.kbSave({
+    resume: '黄选，2027届计算机专业。独立交付能源企业官网+小程序双端项目、Python/Electron 自动化采集工具、AI 文档自动生成系统。技术栈 Vue3/Nuxt3/Java/Python/MySQL，可全国驻场，12月底到岗，能实习到毕业。',
+    profile: {
+      name: '黄选', degree: '本科', major: '计算机科学与技术', status: '2027届',
+      expectRole: '前端开发 / 软件实施', expectCity: '南宁',
+      skills: ['Vue3', 'Nuxt3', 'Java', 'Python', 'MySQL'],
+      intro: '可全国驻场，12月底到岗，能实习到毕业。',
+    },
+  });
+  const cfg = { ...T.cfgLoad(), autoSend: false, autoAgreeResume: true, delayMin: 0, delayMax: 0, maxPerHour: 99, maxChars: 80 };
+  const before = await T.readConv(cdp);
+  const lastBefore = ((before && before.msgs) || []).filter(m => m.kind === 'text').slice(-1)[0];
+  console.log('--- draft 测试（不会发送）---');
+  console.log('resumeAsk', JSON.stringify(before && before.resumeAsk));
+  console.log('HR 最后一条', JSON.stringify(lastBefore && lastBefore.text));
+  await T.processConv(cdp, { name, preview: '', time: '', unread: 1 }, cfg);
+  const after = await T.readConv(cdp);
+  const lastAfter = ((after && after.msgs) || []).filter(m => m.kind === 'text').slice(-1)[0];
+  console.log('处理后最后一条', JSON.stringify(lastAfter && { role: lastAfter.role, text: lastAfter.text }));
+  console.log('--- draft 测试结束：没有发送任何消息 ---');
+}
+
 cdp.close();
 process.exit(0);
