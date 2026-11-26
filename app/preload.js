@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('api', {
   agentScan: () => ipcRenderer.invoke('agent:scan'),
   agentDiag: () => ipcRenderer.invoke('agent:diag'),
   agentUpload: () => ipcRenderer.invoke('agent:upload'),
+  agentGenerateKeywords: () => ipcRenderer.invoke('agent:generateKeywords'),
+  agentBatchConvs: () => ipcRenderer.invoke('agent:batchConvs'),
+  agentBatchSend: p => ipcRenderer.invoke('agent:batchSend', p),
+  agentBatchStop: () => ipcRenderer.invoke('agent:batchStop'),
   agentOpenKbDir: () => ipcRenderer.invoke('agent:openKbDir'),
 
   // 版本更新

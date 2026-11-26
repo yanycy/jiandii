@@ -1454,6 +1454,118 @@ function aiBind() {
     b.textContent = '生成回复';
   };
 
+  // ---------- 试运行 · 从消息列表勾选 HR，批量发送自定义消息 ----------
+  const B = { convs: [], picked: new Set(), busy: false };
+  const escAttr = s => esc(String(s == null ? '' : s)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const pickedNames = () => B.convs.filter(c => B.picked.has(c.name)).map(c => c.name).slice(0, 10);
+  const syncBatchTip = () => {
+    $('aiBatchTip').textContent = B.convs.length
+      ? `共 ${B.convs.length} 位 · 已选 ${pickedNames().length}/10`
+      : '';
+  };
+  function renderBatch() {
+    const box = $('aiBatchList');
+    if (!B.convs.length) {
+      box.innerHTML = '<div class="hint">点「获取消息列表」后，在这里勾选要发送的 HR</div>';
+      syncBatchTip();
+      return;
+    }
+    box.innerHTML = B.convs.map((c, i) => {
+      const on = B.picked.has(c.name);
+      const nm = esc(c.name);
+      const av = c.avatar
+        ? `<img src="${escAttr(c.avatar)}" alt="" referrerpolicy="no-referrer">`
+        : `<span class="bn">${nm.slice(0, 1)}</span>`;
+      return `<label class="aibatchitem${on ? ' on' : ''}" title="${escAttr(c.preview || c.name)}">`
+        + `<input type="checkbox" data-i="${i}" ${on ? 'checked' : ''}>`
+        + `${av}<span class="bn">${nm}</span></label>`;
+    }).join('');
+    syncBatchTip();
+  }
+  $('aiBatchList').addEventListener('change', e => {
+    const cb = e.target.closest('input[type="checkbox"]');
+    if (!cb) return;
+    const c = B.convs[Number(cb.dataset.i)];
+    if (!c) return;
+    if (cb.checked) {
+      if (!B.picked.has(c.name) && B.picked.size >= 10) {
+        cb.checked = false;
+        toast('一次最多选 10 位 HR');
+        return;
+      }
+      B.picked.add(c.name);
+    } else B.picked.delete(c.name);
+    cb.closest('.aibatchitem').classList.toggle('on', cb.checked);
+    syncBatchTip();
+  });
+  $('aiBatchLoad').onclick = async () => {
+    const b = $('aiBatchLoad');
+    if (b.disabled) return;
+    b.disabled = true;
+    b.textContent = '获取中…';
+    try {
+      const r = await bridge.agentBatchConvs();
+      if (r && r.ok) {
+        B.convs = r.convs || [];
+        B.picked = new Set();
+        renderBatch();
+        toast(`已获取 ${B.convs.length} 位 HR，勾选头像后可发送`);
+      } else {
+        $('aiBatchTip').textContent = (r && r.msg) || '获取失败';
+        toast((r && r.msg) || '获取失败');
+      }
+    } catch (e) { toast(e.message || '获取失败'); }
+    finally { b.disabled = false; b.textContent = '获取消息列表'; }
+  };
+  $('aiBatchAll').onclick = () => {
+    B.picked = new Set(B.convs.slice(0, 10).map(c => c.name));
+    renderBatch();
+  };
+  $('aiBatchNone').onclick = () => { B.picked = new Set(); renderBatch(); };
+  $('aiBatchSend').onclick = async () => {
+    if (B.busy) return;
+    const names = pickedNames();
+    const message = $('aiBatchMsg').value.trim();
+    if (!names.length) { toast('先勾选要发送的 HR'); return; }
+    if (!message) { toast('先填写要发送的消息'); return; }
+    const ok = window.confirm(
+      `确认给以下 ${names.length} 位 HR 发送同一条消息？\n\n${names.join('、')}\n\n消息内容：\n${message}`
+    );
+    if (!ok) return;
+    B.busy = true;
+    const b = $('aiBatchSend');
+    b.disabled = true;
+    b.textContent = '发送中…';
+    $('aiBatchStop').classList.remove('hide');
+    const out = $('aiBatchOut');
+    out.classList.remove('hide');
+    out.textContent = `正在逐条发送（${names.length} 位），进度见下方智能体日志…`;
+    try {
+      const r = await bridge.agentBatchSend({
+        names, message, confirm: true,
+        delaySec: Math.max(3, Math.min(120, Number($('aiBatchDelay').value) || 10)),
+      });
+      if (r && r.ok) {
+        out.textContent = `完成：成功 ${r.sent} / ${(r.results || []).length}${r.stopped ? '（已手动停止）' : ''}\n`
+          + (r.results || []).map(x => `  ${x.ok ? '✓' : '×'} ${x.name}${x.why ? ' — ' + x.why : ''}`).join('\n');
+        toast(`批量发送完成：成功 ${r.sent} 位`);
+      } else {
+        out.textContent = (r && r.msg) || '发送失败';
+        toast((r && r.msg) || '发送失败');
+      }
+    } catch (e) { out.textContent = e.message || '发送失败'; }
+    finally {
+      B.busy = false;
+      b.disabled = false;
+      b.textContent = '确认发送';
+      $('aiBatchStop').classList.add('hide');
+    }
+  };
+  $('aiBatchStop').onclick = async () => {
+    await bridge.agentBatchStop();
+    toast('已请求停止：当前这条发完就停');
+  };
+
   // 面板可见时轻量刷新值守状态
   setInterval(() => {
     if ($('paneAi').classList.contains('hide')) return;
@@ -1632,6 +1744,34 @@ function bind() {
     const w = $('kwWrap');
     const hidden = w.classList.toggle('hide');
     $('kwToggle').textContent = hidden ? '展开' : '收起';
+  };
+
+  // 用知识库里的整份简历生成检索词，任何专业都走同一套提示词
+  $('aiGenKw').onclick = async () => {
+    const b = $('aiGenKw');
+    if (b.disabled) return;
+    b.disabled = true;
+    b.textContent = '生成中…';
+    $('aiKwTip').textContent = '正在读简历生成…';
+    try {
+      const r = await bridge.agentGenerateKeywords();
+      if (r && r.ok && (r.text || (r.keywords || []).length)) {
+        $('kwInput').value = r.text || (r.keywords || []).join(' ');
+        const w = $('kwWrap');
+        if (w.classList.contains('hide')) { w.classList.remove('hide'); $('kwToggle').textContent = '收起'; }
+        $('aiKwTip').textContent = `已填入 ${(r.keywords || []).length} 个（${r.source === 'ai' ? 'AI 生成' : '本地档案'}${r.msg ? ' · ' + r.msg : ''}）`;
+        if (S.cfg) { S.cfg.keywords = parseKeywords($('kwInput').value); bridge.saveCfg(S.cfg); }
+        toast('已根据简历生成检索关键词');
+      } else {
+        $('aiKwTip').textContent = (r && r.msg) || '生成失败';
+        toast((r && r.msg) || '生成失败');
+      }
+    } catch (e) {
+      $('aiKwTip').textContent = e.message || '生成失败';
+    } finally {
+      b.disabled = false;
+      b.textContent = 'AI 生成';
+    }
   };
 
   $('btnStart').onclick = start;

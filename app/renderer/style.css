@@ -864,6 +864,35 @@ html[data-theme="light"] .upcard{box-shadow:0 26px 60px -28px rgba(30,48,60,.35)
   white-space:pre-wrap;word-break:break-word;user-select:text;
 }
 
+/* 试运行 · 批量勾选 HR（头像 + 姓名 + 复选框） */
+.aicard>label{display:flex;flex-direction:column;gap:5px;font-size:10.5px;color:var(--txt3)}
+.aicard>label>textarea{
+  width:100%;border-radius:8px;border:1px solid var(--line);
+  background:var(--bg2);color:var(--txt);padding:7px 9px;
+  font:11.5px/1.7 inherit;font-family:inherit;outline:none;resize:vertical;
+}
+.aicard>label>textarea:focus{border-color:var(--acc);box-shadow:var(--glow)}
+.aibatchlist{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:6px;
+  max-height:228px;overflow:auto;padding:8px;
+  border:1px solid var(--line);border-radius:10px;background:var(--bg2);
+}
+.aibatchlist>.hint{grid-column:1/-1;padding:6px}
+.aibatchitem{
+  display:flex;align-items:center;gap:7px;min-width:0;
+  padding:6px 7px;border:1px solid var(--line);border-radius:9px;
+  background:var(--panel);cursor:pointer;user-select:none;transition:border-color .14s,background .14s;
+}
+.aibatchitem:hover{border-color:var(--line2)}
+.aibatchitem.on{border-color:var(--acc);background:var(--acc-bg)}
+.aibatchitem img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:var(--panel2)}
+.aibatchitem .bn{font-size:11px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 1 auto}
+.aibatchitem input{accent-color:var(--acc);flex:0 0 auto;cursor:pointer}
+#aiBatchDelay{
+  width:62px;border-radius:7px;border:1px solid var(--line);
+  background:var(--bg2);color:var(--txt);padding:4px 6px;font-size:11px;outline:none;
+}
+
 .ailogbox{
   border:1px solid var(--line);border-radius:12px;background:var(--panel);
   display:flex;flex-direction:column;overflow:hidden;

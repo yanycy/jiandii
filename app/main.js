@@ -676,6 +676,20 @@ ipcMain.handle('agent:start', async () => { try { return await AGENT.start(); } 
 ipcMain.handle('agent:stop', () => { try { return AGENT.stop(); } catch (e) { return { ok: false, msg: e.message }; } });
 ipcMain.handle('agent:scan', () => AGENT.scanOnce());
 ipcMain.handle('agent:diag', () => AGENT.diag());
+// 用整份简历 + 结构化档案生成检索关键词（任何专业通用）
+ipcMain.handle('agent:generateKeywords', async () => {
+  try { return await AGENT.generateKeywords(); } catch (e) { return { ok: false, msg: e.message }; }
+});
+// 试运行：获取消息列表 → 勾选 HR → 二次确认后批量发送自定义消息
+ipcMain.handle('agent:batchConvs', async () => {
+  try { return await AGENT.batchConvs(); } catch (e) { return { ok: false, msg: e.message }; }
+});
+ipcMain.handle('agent:batchSend', async (e, payload) => {
+  try { return await AGENT.batchSend(payload || {}); } catch (err) { return { ok: false, msg: err.message }; }
+});
+ipcMain.handle('agent:batchStop', () => {
+  try { return AGENT.batchStop(); } catch (err) { return { ok: false, msg: err.message }; }
+});
 ipcMain.handle('agent:openKbDir', () => {
   try { shell.openPath(AGENT.state().kbDir); } catch {}
   return true;

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:">
 <title>简递</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -181,11 +181,12 @@
     <div class="grp">
       <h3>
         检索关键词
+        <button class="mini" id="aiGenKw" title="读知识库里的整份简历，用 AI 生成通用检索词并填入下方">AI 生成</button>
         <button class="mini" id="kwToggle">收起</button>
       </h3>
       <div id="kwWrap">
         <textarea id="kwInput" rows="3" spellcheck="false" placeholder="输入关键词，用空格分隔（例如：前端 开发 实施）"></textarea>
-        <p class="note">四个平台通用 · 只用空格分隔</p>
+        <p class="note">四个平台通用 · 只用空格分隔 · <span id="aiKwTip"></span></p>
       </div>
     </div>
 
@@ -284,11 +285,11 @@
                 <label>学历<input id="aiPDegree" placeholder="本科 / 硕士" autocomplete="off"></label>
                 <label>专业<input id="aiPMajor" autocomplete="off"></label>
                 <label>身份<input id="aiPStatus" placeholder="实习 / 应届 / 社招" autocomplete="off"></label>
-                <label>年限<input id="aiPYears" placeholder="如 1 年" autocomplete="off"></label>
+                <label title="「已经做过多久」，不是「未来能实习多久」；在校/应届没有经历可填「应届」">工作 / 实习年限<input id="aiPYears" placeholder="如 1 年 / 应届" autocomplete="off"></label>
                 <label>期望城市<input id="aiPCity" placeholder="如 南宁 / 深圳" autocomplete="off"></label>
                 <label class="wide">期望工作方向<input id="aiPRole" placeholder="可投多个方向，用 / 分隔，例如：Web前端 / 实施工程师 / 技术支持" autocomplete="off"></label>
                 <label class="wide">技能（用、分隔）<textarea id="aiPSkills" rows="2" spellcheck="false"></textarea></label>
-                <label class="wide">项目经历（用；分隔）<textarea id="aiPProjects" rows="4" spellcheck="false"></textarea></label>
+                <label class="wide" title="上传简历会自动抽取项目 / 实习 / 实践 / 在校 / 比赛经历，不要求标题一定叫「项目经历」">项目 / 实习经历（用；分隔）<textarea id="aiPProjects" rows="4" spellcheck="false" placeholder="上传简历后自动填入；也可手动补充"></textarea></label>
                 <label class="wide">自我介绍<textarea id="aiPIntro" rows="3" spellcheck="false"></textarea></label>
               </div>
             </div>
@@ -346,7 +347,7 @@
                 <button class="ghost sm" id="aiScan">立即扫描一次</button>
                 <button class="ghost sm" id="aiDiag">抓取页面结构</button>
               </div>
-              <p class="note">浏览器保持 BOSS 登录；每 30 秒扫一次未读，点对应 HR 头像进会话回复。HR 发「想要一份附件简历」的卡片时自动点「同意」，并附一段贴合当前岗位的自我介绍。和投递任务互不干扰，可同时开着。</p>
+              <p class="note">浏览器保持 BOSS 登录；每 30 秒扫一次未读，点对应 HR 头像进会话回复。HR 发「想要一份附件简历」卡片时自动点「同意」；直接打字说「发下简历」时自动点底部工具栏「发简历」，随后附一段贴合当前岗位的自我介绍。和投递任务互不干扰，可同时开着。</p>
               <p class="note warn">自动回复违反平台用户协议，存在账号被限流或封禁的风险，请自行评估后再开启。</p>
 
               <h3 class="sub">发送方式</h3>
@@ -365,14 +366,35 @@
         </section>
 
         <section class="aisec hide" id="aiTestSec">
-          <div class="aicard">
-            <h4>试生成一条回复 <span class="hint">只生成不发送，用来验证 AI 是否认识你</span></h4>
-            <textarea id="aiTestInput" rows="3" spellcheck="false" placeholder="贴一条 HR 可能发来的消息，例如：你好，方便说下期望薪资吗？"></textarea>
-            <div class="airow">
-              <button class="primary sm" id="aiTestRun">生成回复</button>
-              <span class="hint" id="aiTestTip"></span>
+          <div class="aigrid">
+            <div class="aicard">
+              <h4>试生成一条回复 <span class="hint">只生成不发送，用来验证 AI 是否认识你</span></h4>
+              <textarea id="aiTestInput" rows="3" spellcheck="false" placeholder="贴一条 HR 可能发来的消息，例如：你好，方便说下期望薪资吗？"></textarea>
+              <div class="airow">
+                <button class="primary sm" id="aiTestRun">生成回复</button>
+                <span class="hint" id="aiTestTip"></span>
+              </div>
+              <div class="aitestout hide" id="aiTestOut"></div>
             </div>
-            <div class="aitestout hide" id="aiTestOut"></div>
+
+            <div class="aicard">
+              <h4>批量给 HR 发消息 <span class="hint">从消息列表勾选头像，自定义内容</span></h4>
+              <div class="airow">
+                <button class="ghost sm" id="aiBatchLoad">获取消息列表</button>
+                <button class="link sm" id="aiBatchAll">全选</button>
+                <button class="link sm" id="aiBatchNone">清空</button>
+                <span class="hint" id="aiBatchTip"></span>
+              </div>
+              <div class="aibatchlist" id="aiBatchList"><div class="hint">点「获取消息列表」后，在这里勾选要发送的 HR</div></div>
+              <label class="wide" style="margin-top:10px">要发送的消息<textarea id="aiBatchMsg" rows="3" spellcheck="false" placeholder="输入自定义消息，例如：您好，我对这个岗位很感兴趣，方便进一步沟通吗？"></textarea></label>
+              <div class="airow">
+                <span class="hint">每人间隔（秒）<input id="aiBatchDelay" type="number" min="3" max="120" value="10"></span>
+                <button class="primary sm" id="aiBatchSend">确认发送</button>
+                <button class="ghost sm hide" id="aiBatchStop">停止</button>
+              </div>
+              <p class="note warn">一次最多 10 人；点「确认发送」后会再弹一次确认，勾选谁才发给谁。群发违反平台用户协议，有账号限流风险。</p>
+              <div class="aitestout hide" id="aiBatchOut"></div>
+            </div>
           </div>
         </section>
 
