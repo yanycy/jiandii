@@ -336,7 +336,7 @@
               <h4>值守开关</h4>
               <div class="aistatrow">
                 <b id="aiWatch">未运行</b>
-                <span id="aiWatchSub">开启后会常驻监听 BOSS 未读消息</span>
+                <span id="aiWatchSub">开启后每 30 秒把消息页置前扫一次未读</span>
               </div>
               <div class="airow">
                 <button class="primary" id="aiStart">开启值守</button>
@@ -346,13 +346,19 @@
                 <button class="ghost sm" id="aiScan">立即扫描一次</button>
                 <button class="ghost sm" id="aiDiag">抓取页面结构</button>
               </div>
-              <p class="note">值守需要浏览器保持 BOSS 登录状态；和投递任务互不干扰，可以同时开着。</p>
+              <p class="note">浏览器保持 BOSS 登录；每 30 秒扫一次未读，点对应 HR 头像进会话回复。HR 发「想要一份附件简历」的卡片时自动点「同意」，并附一段贴合当前岗位的自我介绍。和投递任务互不干扰，可同时开着。</p>
               <p class="note warn">自动回复违反平台用户协议，存在账号被限流或封禁的风险，请自行评估后再开启。</p>
 
               <h3 class="sub">发送方式</h3>
               <div class="chips" id="aiSendMode">
                 <button data-send="1" class="on">自动发送</button>
                 <button data-send="0">只生成草稿</button>
+              </div>
+
+              <h3 class="sub">HR 请求附件简历</h3>
+              <div class="chips" id="aiAgreeMode">
+                <button data-agree="1" class="on">自动同意 + 附介绍</button>
+                <button data-agree="0">不自动同意</button>
               </div>
             </div>
           </div>

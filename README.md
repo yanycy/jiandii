@@ -4,7 +4,7 @@
 
 支持平台：**BOSS 直聘 · 牛客网 · 智联招聘 · 猎聘**
 
-**下载安装包（Windows）**：[简递-Setup-1.2.5.exe（最新版）](https://jiandidi.oss-cn-shenzhen.aliyuncs.com/releases/%E7%AE%80%E9%80%92-Setup-1.2.5.exe)
+**下载安装包（Windows）**：[简递-Setup-1.2.6.exe（最新版）](https://jiandidi.oss-cn-shenzhen.aliyuncs.com/releases/%E7%AE%80%E9%80%92-Setup-1.2.6.exe)
 
 ---
 
@@ -14,6 +14,8 @@
 - 自动进岗位详情页投递简历，投过/需简历/下架/仅沟通的岗位自动分类
 - 未登录时自动停下等你登录，登录后**自动回到原岗位继续投**，不打断流程
 - 投递历史本地持久化，避免重复投递
+- AI 智能体值守：每 30 秒检测 BOSS 未读消息，点头像切到对应 HR 会话后真实输入回复
+- HR 发来附件简历请求卡片时自动点「同意」，并附一段结合当前岗位与简历生成的自我介绍
 - 图形界面（Electron）+ 命令行两种用法
 
 ## 目录结构

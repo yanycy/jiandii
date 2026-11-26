@@ -1129,7 +1129,7 @@ async function checkUpdates() {
 }
 
 /* ---------------- 智能体 ---------------- */
-const AI = { state: null, kb: null, loaded: false, sendMode: 1, busy: false };
+const AI = { state: null, kb: null, loaded: false, sendMode: 1, agreeMode: 1, busy: false };
 
 function aiStripAnsi(s) {
   return String(s == null ? '' : s).replace(/\x1b\[[0-9;]*m/g, '').trim();
@@ -1159,7 +1159,8 @@ function aiSetState(st) {
   AI.state = st;
   const badge = $('aiState');
   if (st.watch && st.watch.running) {
-    badge.textContent = `值守中 · 已回 ${st.watch.stats.replied}`;
+    const st2 = st.watch.stats || {};
+    badge.textContent = `值守中 · 已回 ${st2.replied || 0}` + (st2.agreed ? ` · 同意 ${st2.agreed}` : '');
     badge.classList.add('on');
     badge.classList.remove('err');
   } else if (!st.hasKey) {
@@ -1186,22 +1187,26 @@ function aiSetState(st) {
     const sub = $('aiWatchSub');
     if (running) {
       const t = st.watch.lastScan ? new Date(st.watch.lastScan).toLocaleTimeString() : '—';
-      sub.textContent = `上次扫描 ${t} · 已回 ${st.watch.stats.replied} · 跳过 ${st.watch.stats.skipped} · 失败 ${st.watch.stats.failed}`
+      const st2 = st.watch.stats || {};
+      sub.textContent = `上次扫描 ${t} · 已回 ${st2.replied || 0} · 同意简历 ${st2.agreed || 0} · 跳过 ${st2.skipped || 0} · 失败 ${st2.failed || 0}`
         + (st.watch.lastError ? ` · ${st.watch.lastError}` : '');
     } else {
-      sub.textContent = '开启后会常驻监听 BOSS 未读消息';
+      sub.textContent = '开启后每 30 秒把消息页置前扫一次未读';
     }
   }
   AI.sendMode = st.autoSend ? 1 : 0;
   const chips = $('aiSendMode');
   if (chips) chips.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.send) === AI.sendMode));
+  AI.agreeMode = st.autoAgreeResume === false ? 0 : 1;
+  const agreeChips = $('aiAgreeMode');
+  if (agreeChips) agreeChips.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.agree) === AI.agreeMode));
 }
 
 function aiFillCfg(st) {
   $('aiBase').value = st.baseUrl || 'https://api.deepseek.com';
   $('aiModel').value = st.model || 'deepseek-v4-flash';
   $('aiMaxChars').value = st.maxChars || 60;
-  $('aiPoll').value = st.pollSec || 20;
+  $('aiPoll').value = st.pollSec || 30;
   $('aiDelayMin').value = st.delayMin || 20;
   $('aiDelayMax').value = st.delayMax || 90;
   $('aiMaxPerHour').value = st.maxPerHour || 3;
@@ -1351,6 +1356,7 @@ function aiBind() {
       delayMax: $('aiDelayMax').value,
       maxPerHour: $('aiMaxPerHour').value,
       autoSend: AI.sendMode === 1,
+      autoAgreeResume: AI.agreeMode === 1,
     };
     const st = await bridge.agentCfgSave(patch);
     if (st && st.ok !== false) {
@@ -1371,6 +1377,14 @@ function aiBind() {
     AI.sendMode = Number(b.dataset.send);
     $('aiSendMode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     bridge.agentCfgSave({ autoSend: AI.sendMode === 1 });
+  };
+
+  $('aiAgreeMode').onclick = e => {
+    const b = e.target.closest('button[data-agree]');
+    if (!b) return;
+    AI.agreeMode = Number(b.dataset.agree);
+    $('aiAgreeMode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    bridge.agentCfgSave({ autoAgreeResume: AI.agreeMode === 1 });
   };
 
   $('aiStart').onclick = async () => {
