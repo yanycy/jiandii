@@ -243,8 +243,11 @@ function newLine(raw) {
   hintLog();
   const d = document.createElement('div');
   d.className = 'ln';
-  d.dataset.raw = raw;
-  d.innerHTML = fmt(raw);
+  // 智能体动作统一走运行日志：带 [AI] 前缀且没有自带着色的行，给个青色以便和主流程区分
+  const r0 = String(raw == null ? '' : raw);
+  const paint = r0.includes('[AI]') && !/\x1b\[/.test(r0);
+  d.dataset.raw = paint ? `\x1b[36m${r0}\x1b[0m` : r0;
+  d.innerHTML = fmt(d.dataset.raw);
   box.appendChild(d);
   S.lastLine = d;
   while (box.childElementCount > MAX_LINES) box.removeChild(box.firstElementChild);
@@ -362,7 +365,10 @@ function logExpand() {
     hintLog();
   };
   $('logCopy').onclick = async () => {
-    const txt = [...box.querySelectorAll('.ln')].map(d => d.dataset.raw || d.textContent).join('\n');
+    // 复制时去掉 ANSI 颜色码，粘到聊天/文档里不带乱码
+    const txt = [...box.querySelectorAll('.ln')]
+      .map(d => String(d.dataset.raw || d.textContent).replace(/\x1b\[[0-9;]*m/g, ''))
+      .join('\n');
     if (!txt.trim()) { toast('日志还是空的'); return; }
     try {
       await navigator.clipboard.writeText(txt);
@@ -1026,8 +1032,6 @@ bridge.on('log', p => {
   else if (p.mode === 'append') appendLine(p.text);
   else if (p.mode === 'replace') { replaceLine(p.text); parseLine(p.text); }
   else { newLine(p.text); parseLine(p.text); }
-  // 智能体日志同时收进「智能体」面板，投递主流程的日志不受影响
-  if (typeof p.text === 'string' && p.text.includes('[AI]')) aiFeed(p.text);
 });
 
 bridge.on('state', s => {
@@ -1239,28 +1243,7 @@ async function checkUpdates() {
 /* ---------------- 智能体 ---------------- */
 const AI = { state: null, kb: null, loaded: false, sendMode: 1, agreeMode: 1, busy: false };
 
-function aiStripAnsi(s) {
-  return String(s == null ? '' : s).replace(/\x1b\[[0-9;]*m/g, '').trim();
-}
-
-// 主进程日志里带 [AI] 前缀的行，单独收进智能体面板
-function aiFeed(text) {
-  const box = $('aiLogBox');
-  if (!box) return;
-  const t = aiStripAnsi(text);
-  if (!t || !t.includes('[AI]')) return;
-  const empty = $('aiLogEmpty');
-  if (empty) empty.remove();
-  const line = document.createElement('div');
-  line.className = 'alline';
-  if (/失败|出错|错误|异常/.test(t)) line.classList.add('err');
-  else if (/已回复/.test(t)) line.classList.add('ok');
-  else if (/提醒|跳过|上限|草稿/.test(t)) line.classList.add('warn');
-  line.textContent = t.replace('[AI]', '').trim();
-  box.appendChild(line);
-  while (box.children.length > 400) box.removeChild(box.firstChild);
-  box.scrollTop = box.scrollHeight;
-}
+// 智能体动作统一进底部运行日志，不再单独开面板
 
 function aiSetState(st) {
   if (!st || st.ok === false) return;
@@ -1385,7 +1368,7 @@ async function aiSaveKb() {
   const tip = $('aiSaveTip');
   if (r && r.ok) {
     tip.textContent = '已保存到本地知识库';
-    aiFeed('[AI] 知识库已保存');
+    newLine('[AI] 知识库已保存');
     aiRefresh();
   } else {
     tip.textContent = (r && r.msg) || '保存失败';
@@ -1415,7 +1398,7 @@ function aiBind() {
     $('aiSaveTip').textContent = r.profile
       ? `已解析 ${label || r.file} · 档案已按${by}自动填好，核对后点「保存知识库」`
       : `已解析 ${label || r.file}${r.warn ? ' · ' + r.warn : ''}`;
-    aiFeed(`[AI] 简历已解析：${label || r.file}（${(r.text || '').length} 字）${r.profile ? '，档案已自动填写' : ''}`);
+    newLine(`[AI] 简历已解析：${label || r.file}（${(r.text || '').length} 字）${r.profile ? '，档案已自动填写' : ''}`);
     aiRefresh(true);
   };
 
@@ -1553,7 +1536,7 @@ function aiBind() {
     try {
       const r = await bridge.agentStart();
       toast((r && r.msg) || '已开启');
-      if (!r || !r.ok) aiFeed(`[AI] 开启失败：${(r && r.msg) || '未知原因'}`);
+      if (!r || !r.ok) newLine(`[AI] 开启失败：${(r && r.msg) || '未知原因'}`);
     } finally {
       AI.busy = false;
       b.disabled = false;
