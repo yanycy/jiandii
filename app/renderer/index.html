@@ -261,13 +261,15 @@
 
         <section class="aisec" id="aiKb">
           <div class="aigrid">
-            <div class="aicard">
+            <div class="aicard" id="aiResumeCard">
               <h4>简历原文 <span class="hint" id="aiResumeLen">0 字</span></h4>
               <div class="airow">
                 <button class="ghost sm" id="aiUpload">上传简历（PDF / Word）</button>
                 <button class="link sm" id="aiKbDir">打开知识库目录</button>
+                <span class="hint drop-tip">也可把文件拖进这张卡片</span>
               </div>
-              <textarea id="aiResume" rows="9" spellcheck="false" placeholder="支持 PDF / Word(.docx) / txt / md，上传后这里会显示解析出的文字；如果是扫描件（图片版 PDF），请直接把内容粘贴到这里"></textarea>
+              <div class="drop-mask"><div>松开即可解析简历<br><span>PDF / Word(.docx) / txt / md</span></div></div>
+              <textarea id="aiResume" rows="9" spellcheck="false" placeholder="支持 PDF / Word(.docx) / txt / md，上传或拖入后这里会显示解析出的文字；如果是扫描件（图片版 PDF），请直接把内容粘贴到这里"></textarea>
             </div>
 
             <div class="aicard">

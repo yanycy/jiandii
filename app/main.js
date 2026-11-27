@@ -4,6 +4,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 
 const APP_NAME = '简递';
 
@@ -14,12 +15,13 @@ const APP_DIR = app.isPackaged
 
 // 品牌升级前的目录叫 AutoApplyBot-data，首次启动自动搬过来，历史投递记录不丢
 // 注意：不能用 fs.cpSync —— Windows 上复制到中文目录会直接崩进程，改为手写递归
-function copyDirSafe(src, dst) {
+function copyDirSafe(src, dst, skip = null) {
   fs.mkdirSync(dst, { recursive: true });
   for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+    if (skip && skip.has(e.name)) continue;
     const s = path.join(src, e.name);
     const d = path.join(dst, e.name);
-    if (e.isDirectory()) copyDirSafe(s, d);
+    if (e.isDirectory()) copyDirSafe(s, d, skip);
     else if (e.isFile()) fs.copyFileSync(s, d);
   }
 }
@@ -33,8 +35,35 @@ function migrateLegacyData(target) {
   } catch {}
 }
 
-// 数据默认跟程序放一起；开发/自动化测试可以用 AAB_DATA_DIR 指到临时目录，互不干扰
-let DATA_DIR = process.env.AAB_DATA_DIR || path.join(APP_DIR, '简递数据');
+// 数据目录固定在系统用户目录（%APPDATA%\简递\简递数据），和安装位置彻底解耦：
+// 覆盖升级、换安装盘、重装都不会把知识库/投递记录冲掉。
+// 1.2.10 及更早版本把数据放在安装目录下的「简递数据」，首次启动自动搬过来。
+// 开发/自动化测试仍然可以用 AAB_DATA_DIR 指到临时目录，互不干扰。
+const INSTALL_DATA = path.join(APP_DIR, '简递数据');
+function migrateInstallData(src, dst) {
+  try {
+    if (!src || !dst || path.resolve(src) === path.resolve(dst)) return false;
+    if (!fs.existsSync(src)) return false;
+    // 新位置已经有知识库，说明迁移过了或者用户已经在新目录里编辑过，绝不覆盖
+    const kb = path.join(dst, '知识库');
+    if (fs.existsSync(kb) && fs.readdirSync(kb).length) return false;
+    copyDirSafe(src, dst, new Set(['.electron']));
+    console.log('[简递] 已把知识库从安装目录迁移到：' + dst);
+    return true;
+  } catch (e) {
+    console.log('[简递] 知识库迁移失败（继续用新目录）：' + e.message);
+    return false;
+  }
+}
+
+let DATA_DIR = process.env.AAB_DATA_DIR || '';
+if (!DATA_DIR) {
+  DATA_DIR = path.join(app.getPath('userData'), '简递数据');
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    migrateInstallData(INSTALL_DATA, DATA_DIR);
+  } catch {}
+}
 try {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.accessSync(DATA_DIR, fs.constants.W_OK);
@@ -695,6 +724,22 @@ ipcMain.handle('agent:openKbDir', () => {
   return true;
 });
 
+// 解析出文字后的统一收尾：写知识库 → 自动建档 → 回给渲染层
+async function adoptResume(label, p) {
+  try { AGENT.kbSave({ resume: p.text }); } catch {}
+  emit('log', { mode: 'line', text: `\u001b[36m  · 简历已解析：${label}（${p.text.length} 字）\u001b[0m` });
+
+  // 解析完立刻把能确定的信息填进结构化档案，省得再手抄一遍
+  let profile = null, profileSource = '';
+  try {
+    const f = await AGENT.profileFromResume(p.text);
+    if (f && f.ok) { profile = f.profile; profileSource = f.source || ''; }
+  } catch (e) {
+    emit('log', { mode: 'line', text: `\u001b[33m  · 自动建档没成功：${e.message}\u001b[0m` });
+  }
+  return { ok: true, text: p.text, warn: p.warn || '', file: label, profile, profileSource };
+}
+
 // 选一份简历解析成文本，顺手写进知识库（扫描件/旧版 doc 会明确提示改粘贴）
 ipcMain.handle('agent:upload', async () => {
   const r = await dialog.showOpenDialog(win || undefined, {
@@ -710,19 +755,32 @@ ipcMain.handle('agent:upload', async () => {
   let p;
   try { p = AGENT.parseResume(file); } catch (e) { return { ok: false, msg: e.message }; }
   if (!p || !p.ok) return { ok: false, msg: (p && p.msg) || '解析失败' };
-  try { AGENT.kbSave({ resume: p.text }); } catch {}
-  emit('log', { mode: 'line', text: `\u001b[36m  · 简历已解析：${path.basename(file)}（${p.text.length} 字）\u001b[0m` });
+  return adoptResume(path.basename(file), p);
+});
 
-  // 解析完立刻把能确定的信息填进结构化档案，省得再手抄一遍
-  let profile = null, profileSource = '';
-  try {
-    const f = await AGENT.profileFromResume(p.text);
-    if (f && f.ok) { profile = f.profile; profileSource = f.source || ''; }
-  } catch (e) {
-    emit('log', { mode: 'line', text: `\u001b[33m  · 自动建档没成功：${e.message}\u001b[0m` });
+// 拖拽上传：渲染层直接把文件内容丢过来（Uint8Array，结构化克隆），
+// 落到临时文件后复用同一套解析/建档流程，避免渲染层碰 fs。
+ipcMain.handle('agent:uploadBuffer', async (e, payload) => {
+  const name = String((payload && payload.name) || 'resume');
+  const data = payload && payload.data;
+  if (!data || !data.byteLength) return { ok: false, msg: '没有收到文件内容' };
+  const ext = path.extname(name).toLowerCase();
+  if (!['.pdf', '.docx', '.txt', '.md'].includes(ext)) {
+    return { ok: false, msg: '只支持 PDF / Word(.docx) / txt / md；旧版 .doc 请先另存为 .docx' };
   }
-
-  return { ok: true, text: p.text, warn: p.warn || '', file: path.basename(file), profile, profileSource };
+  const tmp = path.join(os.tmpdir(), `jiandi-resume-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  try {
+    const bytes = data instanceof Uint8Array
+      ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+      : Buffer.from(data);
+    fs.writeFileSync(tmp, bytes);
+    let p;
+    try { p = AGENT.parseResume(tmp); } catch (err) { return { ok: false, msg: err.message }; }
+    if (!p || !p.ok) return { ok: false, msg: (p && p.msg) || '解析失败' };
+    return await adoptResume(name, p);
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 });
 
 // ------------------------------------------------------------------ 生命周期

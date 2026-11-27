@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   agentScan: () => ipcRenderer.invoke('agent:scan'),
   agentDiag: () => ipcRenderer.invoke('agent:diag'),
   agentUpload: () => ipcRenderer.invoke('agent:upload'),
+  agentUploadBuffer: (name, data) => ipcRenderer.invoke('agent:uploadBuffer', { name, data }),
   agentGenerateKeywords: () => ipcRenderer.invoke('agent:generateKeywords'),
   agentBatchConvs: () => ipcRenderer.invoke('agent:batchConvs'),
   agentBatchSend: p => ipcRenderer.invoke('agent:batchSend', p),

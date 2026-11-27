@@ -995,3 +995,18 @@ html[data-theme="light"] .upcard{box-shadow:0 26px 60px -28px rgba(30,48,60,.35)
 .ailog .alline.ok{color:var(--ok)}
 .ailog .alline.warn{color:var(--warn)}
 .ailog .alline.err{color:var(--err)}
+
+/* 简历拖拽上传：整张卡片作为投放区，拖入时盖一层虚线提示 */
+#aiResumeCard{position:relative}
+.drop-tip{font-size:11px;color:var(--txt3)}
+.drop-mask{
+  position:absolute;inset:0;z-index:6;display:none;
+  align-items:center;justify-content:center;text-align:center;
+  border:2px dashed var(--acc);border-radius:12px;
+  background:var(--panel);
+  color:var(--acc);font-size:13px;font-weight:600;line-height:1.8;
+  pointer-events:none;
+}
+.drop-mask span{font-weight:500;font-size:11px;opacity:.75}
+#aiResumeCard.dragover .drop-mask{display:flex}
+#aiResumeCard.dragover{border-color:var(--acc)}

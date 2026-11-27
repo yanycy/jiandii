@@ -1,5 +1,9 @@
 /* 一键投递助手 · 界面逻辑 */
 const bridge = window.api;
+
+// 防止文件被拖到窗口空白处时 Chromium 直接导航去打开它（会把整个界面顶掉）
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
 const $ = id => document.getElementById(id);
 
 const S = {
@@ -1403,6 +1407,38 @@ function aiBind() {
 
   $('aiResume').oninput = () => { $('aiResumeLen').textContent = $('aiResume').value.length + ' 字'; };
 
+  const applyResumeResult = (r, label) => {
+    $('aiResume').value = r.text || '';
+    $('aiResumeLen').textContent = ($('aiResume').value || '').length + ' 字';
+    const by = r.profileSource === 'ai' ? 'AI 抽取' : '本地规则';
+    if (r.profile) aiFillProfile(r.profile);
+    $('aiSaveTip').textContent = r.profile
+      ? `已解析 ${label || r.file} · 档案已按${by}自动填好，核对后点「保存知识库」`
+      : `已解析 ${label || r.file}${r.warn ? ' · ' + r.warn : ''}`;
+    aiFeed(`[AI] 简历已解析：${label || r.file}（${(r.text || '').length} 字）${r.profile ? '，档案已自动填写' : ''}`);
+    aiRefresh(true);
+  };
+
+  // 拖拽上传：读成二进制交给主进程解析，和「上传简历」按钮走同一条链路
+  const uploadResumeFile = async file => {
+    if (!file) return;
+    const b = $('aiUpload');
+    const old = b.textContent;
+    b.disabled = true;
+    b.textContent = '正在解析…';
+    try {
+      const buf = await file.arrayBuffer();
+      const r = await bridge.agentUploadBuffer(file.name, new Uint8Array(buf));
+      if (r && r.ok) applyResumeResult(r, file.name);
+      else toast((r && r.msg) || '解析失败');
+    } catch (err) {
+      toast('读取文件失败：' + err.message);
+    } finally {
+      b.disabled = false;
+      b.textContent = old;
+    }
+  };
+
   $('aiUpload').onclick = async () => {
     const b = $('aiUpload');
     b.disabled = true;
@@ -1410,15 +1446,7 @@ function aiBind() {
     try {
       const r = await bridge.agentUpload();
       if (r && r.ok) {
-        $('aiResume').value = r.text || '';
-        $('aiResumeLen').textContent = ($('aiResume').value || '').length + ' 字';
-        const by = r.profileSource === 'ai' ? 'AI 抽取' : '本地规则';
-        if (r.profile) aiFillProfile(r.profile);
-        $('aiSaveTip').textContent = r.profile
-          ? `已解析 ${r.file} · 档案已按${by}自动填好，核对后点「保存知识库」`
-          : `已解析 ${r.file}${r.warn ? ' · ' + r.warn : ''}`;
-        aiFeed(`[AI] 简历已解析：${r.file}（${(r.text || '').length} 字）${r.profile ? '，档案已自动填写' : ''}`);
-        aiRefresh(true);
+        applyResumeResult(r);
       } else if (!r || !r.canceled) {
         toast((r && r.msg) || '解析失败');
       }
@@ -1427,6 +1455,30 @@ function aiBind() {
       b.textContent = '上传简历（PDF / Word）';
     }
   };
+
+  // 整张「简历原文」卡片都是投放区；计数器避免拖过子元素时高亮闪烁
+  const resumeCard = $('aiResumeCard');
+  if (resumeCard) {
+    let depth = 0;
+    resumeCard.addEventListener('dragenter', e => {
+      e.preventDefault(); e.stopPropagation();
+      depth++;
+      resumeCard.classList.add('dragover');
+    });
+    resumeCard.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+    resumeCard.addEventListener('dragleave', e => {
+      e.preventDefault(); e.stopPropagation();
+      depth = Math.max(0, depth - 1);
+      if (!depth) resumeCard.classList.remove('dragover');
+    });
+    resumeCard.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation();
+      depth = 0;
+      resumeCard.classList.remove('dragover');
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      uploadResumeFile(f);
+    });
+  }
 
   $('aiKbDir').onclick = () => bridge.agentOpenKbDir();
   $('aiSaveKb').onclick = aiSaveKb;
