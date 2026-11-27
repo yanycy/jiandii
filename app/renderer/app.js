@@ -226,6 +226,7 @@ function fmt(raw) {
 /* ---------------- 日志 ---------------- */
 const box = $('logbox');
 const MAX_LINES = 1500;
+let logN = 0;
 
 function clearEmpty() {
   const e = box.querySelector('.empty');
@@ -234,6 +235,8 @@ function clearEmpty() {
 
 function newLine(raw) {
   clearEmpty();
+  logN++;
+  hintLog();
   const d = document.createElement('div');
   d.className = 'ln';
   d.dataset.raw = raw;
@@ -265,6 +268,106 @@ box.addEventListener('scroll', () => {
 function scrollDown() {
   if (autoScroll) box.scrollTop = box.scrollHeight;
 }
+
+/* ---------------- 底部日志面板：拖高度 / 收起 / 复制 / 清空 ---------------- */
+const LOGD = { min: 92, def: 220, h: 220 };
+// file:// 下个别环境会禁用 localStorage，读写都要兜底
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const dock = $('logDock');
+const grip = $('logGrip');
+
+function hintLog() {
+  const el = $('logHint');
+  if (!el) return;
+  el.textContent = logN ? `共 ${logN} 行` : '拖动上沿可调高度';
+}
+
+function logEmpty() {
+  box.innerHTML = '<div class="empty"><div class="etitle">准备就绪</div>'
+    + '<div class="esub">选好城市，点「开始投递」（Ctrl + Enter），日志会实时滚动在这里</div></div>';
+}
+
+// 上限：给上方工作区至少留 ~150px，同时不超过窗口 72%
+function logMax() {
+  const main = document.querySelector('.main');
+  const h = main ? main.getBoundingClientRect().height : window.innerHeight;
+  const room = h - 52 - 40 - 150;
+  return Math.max(LOGD.min + 40, Math.min(room, Math.round(window.innerHeight * 0.72)));
+}
+
+function setLogH(h, persist) {
+  LOGD.h = Math.max(LOGD.min, Math.min(logMax(), Math.round(h)));
+  dock.classList.remove('folded');
+  dock.style.setProperty('--logh', LOGD.h + 'px');
+  if (persist) lsSet('jd.logh', String(LOGD.h));
+}
+
+function logExpand() {
+  dock.classList.remove('folded');
+  lsSet('jd.logfold', '0');
+}
+
+(function logPanelInit() {
+  if (!dock || !grip) return;
+  const savedH = Number(lsGet('jd.logh'));
+  dock.style.setProperty('--logh', (savedH > 0 ? Math.min(savedH, 900) : LOGD.def) + 'px');
+  LOGD.h = savedH > 0 ? savedH : LOGD.def;
+  if (lsGet('jd.logfold') === '1') dock.classList.add('folded');
+  setLogH(LOGD.h, false);
+  logEmpty();
+  hintLog();
+
+  let drag = null;
+  grip.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    drag = { y: e.clientY, h: dock.offsetHeight || LOGD.h };
+    dock.classList.add('dragging');
+    document.body.classList.add('logdrag');
+    try { grip.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    setLogH(drag.h - (e.clientY - drag.y), false);
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    drag = null;
+    dock.classList.remove('dragging');
+    document.body.classList.remove('logdrag');
+    lsSet('jd.logh', String(LOGD.h));
+  };
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+  grip.addEventListener('dblclick', () => setLogH(LOGD.def, true));
+  window.addEventListener('resize', () => {
+    if (dock.classList.contains('folded')) return;
+    if (LOGD.h > logMax()) setLogH(logMax(), true);
+  });
+
+  $('logFold').onclick = () => {
+    const f = dock.classList.toggle('folded');
+    lsSet('jd.logfold', f ? '1' : '0');
+  };
+  $('logClear').onclick = () => {
+    box.innerHTML = '';
+    S.lastLine = null;
+    logN = 0;
+    logEmpty();
+    hintLog();
+  };
+  $('logCopy').onclick = async () => {
+    const txt = [...box.querySelectorAll('.ln')].map(d => d.dataset.raw || d.textContent).join('\n');
+    if (!txt.trim()) { toast('日志还是空的'); return; }
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast('日志已复制到剪贴板');
+    } catch {
+      toast('复制失败，可以拖动鼠标选中后 Ctrl+C');
+    }
+  };
+})();
 
 /* ---------------- 统计 ---------------- */
 function paint() {
@@ -809,14 +912,15 @@ function resumeTask() {
     toast('这条任务没有记录城市，请先选一个城市再继续');
     return;
   }
-  const logTab = document.querySelector('.tabs button[data-tab="log"]');
-  if (logTab) logTab.click();
+  // 日志已经常驻在底部，续投时直接开始，并把日志面板展开
+  logExpand();
   start({ resumeFrom: t.id });
 }
 
 /* ---------------- 启动任务 ---------------- */
 function start(extra) {
   if (S.running) return;
+  logExpand();               // 开始投递就把底部日志展开，能立刻看到进度
   if (U.forced && !$('upMask').classList.contains('hide')) {
     toast('请先完成更新再开始投递');
     return;
@@ -1189,6 +1293,7 @@ function aiSetState(st) {
       const t = st.watch.lastScan ? new Date(st.watch.lastScan).toLocaleTimeString() : '—';
       const st2 = st.watch.stats || {};
       sub.textContent = `上次扫描 ${t} · 已回 ${st2.replied || 0} · 同意简历 ${st2.agreed || 0} · 跳过 ${st2.skipped || 0} · 失败 ${st2.failed || 0}`
+        + (st.watch.activeName ? ` · 盯「${st.watch.activeName}」` : '')
         + (st.watch.lastError ? ` · ${st.watch.lastError}` : '');
     } else {
       sub.textContent = '开启后每 30 秒把消息页置前扫一次未读';
@@ -1750,8 +1855,9 @@ function bind() {
   $('aiGenKw').onclick = async () => {
     const b = $('aiGenKw');
     if (b.disabled) return;
+    const label = b.querySelector('.aigen-t') || b;
     b.disabled = true;
-    b.textContent = '生成中…';
+    label.textContent = '生成中…';
     $('aiKwTip').textContent = '正在读简历生成…';
     try {
       const r = await bridge.agentGenerateKeywords();
@@ -1770,7 +1876,7 @@ function bind() {
       $('aiKwTip').textContent = e.message || '生成失败';
     } finally {
       b.disabled = false;
-      b.textContent = 'AI 生成';
+      label.textContent = 'AI 生成';
     }
   };
 
@@ -1828,7 +1934,6 @@ function bind() {
     b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
       const t = b.dataset.tab;
-      $('paneLog').classList.toggle('hide', t !== 'log');
       $('paneRep').classList.toggle('hide', t !== 'rep');
       $('paneAi').classList.toggle('hide', t !== 'ai');
       if (t === 'ai') aiRefresh(false);

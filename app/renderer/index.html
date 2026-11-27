@@ -181,8 +181,16 @@
     <div class="grp">
       <h3>
         检索关键词
-        <button class="mini" id="aiGenKw" title="读知识库里的整份简历，用 AI 生成通用检索词并填入下方">AI 生成</button>
-        <button class="mini" id="kwToggle">收起</button>
+        <span class="h3acts">
+          <button class="aigen" id="aiGenKw" title="读知识库里的整份简历，用 AI 生成通用检索词并填入下方">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"></path>
+              <path d="M18 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z"></path>
+            </svg>
+            <span class="aigen-t">AI 生成</span>
+          </button>
+          <button class="mini" id="kwToggle">收起</button>
+        </span>
       </h3>
       <div id="kwWrap">
         <textarea id="kwInput" rows="3" spellcheck="false" placeholder="输入关键词，用空格分隔（例如：前端 开发 实施）"></textarea>
@@ -213,30 +221,14 @@
         <div class="st"><b id="stSeen">0</b><i>扫描</i></div>
       </div>
       <div class="tabs">
-        <button data-tab="log" class="on">运行日志</button>
+        <button data-tab="ai" class="on">智能体</button>
         <button data-tab="rep">历史任务</button>
-        <button data-tab="ai">智能体</button>
       </div>
       <div class="badge idle" id="badge"><span></span>待命中</div>
     </div>
 
-    <div class="pane" id="paneLog">
-      <div class="logbox" id="logbox">
-        <div class="empty">
-          <div class="eicon">
-            <svg viewBox="0 0 512 512" fill="none" aria-hidden="true">
-              <path d="M392.8 177 A158 158 0 1 1 335 119.2" stroke="currentColor" stroke-width="34" stroke-linecap="round"/>
-              <path d="M370 141 L336 93 L310 136 Z" fill="currentColor"/>
-              <rect x="182" y="201" width="148" height="110" rx="14" fill="currentColor"/>
-              <path d="M196 216 L256 258 L316 216" stroke="var(--bg2)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="etitle">准备就绪</div>
-          <div class="esub">选好城市，点「开始投递」</div>
-          <div class="ekbd"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="kd">快速开始</span></div>
-        </div>
-      </div>
-    </div>
+    <!-- 上部工作区：智能体 / 历史任务 -->
+    <div class="workarea" id="workarea">
 
     <div class="pane hide" id="paneRep">
       <div class="reps" id="taskList"></div>
@@ -256,7 +248,7 @@
       </div>
     </div>
 
-    <div class="pane hide" id="paneAi">
+    <div class="pane" id="paneAi">
       <div class="aisub">
         <button data-ai="kb" class="on">知识库</button>
         <button data-ai="run">值守与设置</button>
@@ -406,6 +398,24 @@
         </div>
 
       </div>
+    </div>
+
+    </div><!-- /workarea -->
+
+    <!-- 底部运行日志：拖动上沿调高度，双击恢复默认 -->
+    <div class="logdock" id="logDock">
+      <div class="loggrip" id="logGrip" title="拖动调整日志高度 · 双击恢复默认"><span></span></div>
+      <div class="loghead">
+        <b>运行日志</b>
+        <span class="lhhint" id="logHint">拖动上沿可调高度</span>
+        <span class="lhsp"></span>
+        <button class="lhbtn" id="logCopy" title="复制全部日志">复制</button>
+        <button class="lhbtn" id="logClear" title="清空当前日志">清空</button>
+        <button class="lhbtn fold" id="logFold" title="收起 / 展开日志">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+      <div class="logbox" id="logbox"></div>
     </div>
 
     <div class="foot">
